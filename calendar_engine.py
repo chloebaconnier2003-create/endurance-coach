@@ -2,22 +2,30 @@ from datetime import datetime,date,time,timedelta
 
 def overlaps(a_start,a_end,b_start,b_end): return a_start < b_end and b_start < a_end
 
-def work_cycle_instances(cycles,start,end):
-    """28-day pattern supplied by athlete: days 0,4,8,12,16,20,24 = 24h shifts, repeating."""
-    out=[]
+def work_cycle_instances(cycles,start,end,exceptions=None):
+    """Generate theoretical 24h/72h shifts, then apply one-off exceptions without shifting the cycle."""
+    out=[]; exceptions=exceptions or []
+    exmap={(int(x['cycle_id']),x['original_date']):x for x in exceptions}
     for c in cycles:
         if not int(c.get('active',1)): continue
-        anchor=date.fromisoformat(c['anchor_date']); pattern=[0,4,8,12,16,20,24]; d=start-timedelta(days=28)
+        anchor=date.fromisoformat(c['anchor_date']); step=max(1,int(c.get('cycle_days') or 4)); d=anchor
+        while d>start: d-=timedelta(days=step)
+        while d<start: d+=timedelta(days=step)
         while d<=end:
-            offset=(d-anchor).days
-            if offset>=0 and offset%int(c.get('cycle_days') or 28) in pattern:
-                ss=datetime.combine(d,time(8)); se=ss+timedelta(hours=24)
-                out.append({'start_at':ss.isoformat(timespec='minutes'),'end_at':se.isoformat(timespec='minutes'),'shift_type':'24h','notes':'Cycle automatique','virtual':True})
-            d+=timedelta(days=1)
+            original=d.isoformat(); ex=exmap.get((int(c['id']),original))
+            if ex and ex['action']=='delete':
+                d+=timedelta(days=step); continue
+            if ex and ex['action']=='move' and ex.get('new_start_at') and ex.get('new_end_at'):
+                ss=datetime.fromisoformat(ex['new_start_at']); se=datetime.fromisoformat(ex['new_end_at']); moved=True
+            else:
+                ss=datetime.combine(d,time(8)); se=ss+timedelta(hours=24); moved=False
+            if ss.date()<=end and se.date()>=start:
+                out.append({'start_at':ss.isoformat(timespec='minutes'),'end_at':se.isoformat(timespec='minutes'),'shift_type':'24h','notes':'Cycle automatique','virtual':True,'cycle_id':c['id'],'original_date':original,'moved':moved})
+            d+=timedelta(days=step)
     return out
 
-def all_shifts(manual,cycles,start,end):
-    auto=work_cycle_instances(cycles,start,end); seen={(x['start_at'],x['end_at']) for x in manual}; return manual+[x for x in auto if (x['start_at'],x['end_at']) not in seen]
+def all_shifts(manual,cycles,start,end,exceptions=None):
+    auto=work_cycle_instances(cycles,start,end,exceptions); seen={(x['start_at'],x['end_at']) for x in manual}; return manual+[x for x in auto if (x['start_at'],x['end_at']) not in seen]
 
 def recurring_instances(rules, shifts, start, end):
     out=[]; cancelled=[]
