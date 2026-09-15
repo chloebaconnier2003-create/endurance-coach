@@ -26,6 +26,9 @@ def migrate(c):
  for n,d in [('title',"TEXT NOT NULL DEFAULT 'Cycle 24/72'"),('anchor_date',"TEXT NOT NULL DEFAULT '2026-01-01'"),('cycle_days','INTEGER DEFAULT 4'),('active','INTEGER DEFAULT 1'),('notes','TEXT')]:_add(c,'work_cycles',n,d)
  for n,d in [('cycle_id','INTEGER'),('original_date','TEXT'),('action',"TEXT DEFAULT 'delete'"),('new_start_at','TEXT'),('new_end_at','TEXT'),('notes','TEXT')]:_add(c,'work_cycle_exceptions',n,d)
  for n,d in [('title',"TEXT NOT NULL DEFAULT 'Récurrence'"),('event_type',"TEXT NOT NULL DEFAULT 'other'"),('weekday','INTEGER DEFAULT 0'),('start_time',"TEXT DEFAULT '19:00'"),('duration_min','INTEGER DEFAULT 90'),('intensity',"TEXT DEFAULT 'moderate'"),('start_date',"TEXT DEFAULT '2026-01-01'"),('end_date','TEXT'),('active','INTEGER DEFAULT 1'),('notes','TEXT')]:_add(c,'recurring_rules',n,d)
+ # V5: persistent databases can already contain an older recurring_exceptions table.
+ # CREATE TABLE IF NOT EXISTS does not upgrade it, so add every V5 field explicitly.
+ for n,d in [('rule_id','INTEGER'),('original_date','TEXT'),('action',"TEXT DEFAULT 'delete'"),('new_start_at','TEXT'),('new_end_at','TEXT')]:_add(c,'recurring_exceptions',n,d)
  c.commit()
 def init():
  c=connect(); migrate(c); c.close()
