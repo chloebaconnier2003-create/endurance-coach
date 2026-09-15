@@ -1,5 +1,5 @@
 import calendar
-from datetime import date,timedelta
+from datetime import timedelta
 import streamlit as st
 
 def _events_by_date(events):
@@ -7,27 +7,34 @@ def _events_by_date(events):
     for e in events: out.setdefault(e['date'],[]).append(e)
     return out
 
+def _choose(items,key):
+    chosen=None
+    for i,e in enumerate(sorted(items,key=lambda x:x.get('time',''))):
+        label=f"{e.get('icon','•')} {e.get('time','')} {e['title']}"
+        if st.button(label,key=f"{key}_{i}_{e.get('uid',e['title'])}",use_container_width=True): chosen=e
+    return chosen
+
 def month_view(year,month,events):
-    by=_events_by_date(events); cal=calendar.Calendar(firstweekday=0); weeks=cal.monthdatescalendar(year,month)
+    by=_events_by_date(events); cal=calendar.Calendar(firstweekday=0); weeks=cal.monthdatescalendar(year,month); selected=None
     headers=st.columns(7)
     for c,n in zip(headers,['Lun','Mar','Mer','Jeu','Ven','Sam','Dim']): c.markdown(f'**{n}**')
-    for week in weeks:
+    for wi,week in enumerate(weeks):
         cols=st.columns(7)
         for col,d in zip(cols,week):
-            faded=d.month!=month; items=by.get(d,[]); lines=[]
-            for e in items[:4]: lines.append(f"{e.get('icon','•')} {e['title']}")
-            if len(items)>4: lines.append(f"+{len(items)-4} autre(s)")
-            txt='<br>'.join(lines) or '&nbsp;'
-            opacity='.35' if faded else '1'
-            col.markdown(f"<div style='min-height:105px;border:1px solid rgba(128,128,128,.2);border-radius:12px;padding:7px;opacity:{opacity}'><b>{d.day}</b><br><span style='font-size:.78rem'>{txt}</span></div>",unsafe_allow_html=True)
+            with col:
+                st.markdown(f"**{d.day}**" if d.month==month else f"<span style='opacity:.35'>{d.day}</span>",unsafe_allow_html=True)
+                pick=_choose(by.get(d,[])[:4],f"m_{year}_{month}_{wi}_{d.isoformat()}")
+                if pick:selected=pick
+                if len(by.get(d,[]))>4: st.caption(f"+{len(by[d])-4} autre(s)")
+    return selected
 
 def week_view(start,events):
-    by=_events_by_date(events)
+    by=_events_by_date(events); selected=None
     for i in range(7):
         d=start+timedelta(days=i); st.markdown(f"### {['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'][d.weekday()]} {d.strftime('%d/%m')}")
         items=by.get(d,[])
         if not items: st.caption('Disponible / aucun événement fixe')
-        for e in sorted(items,key=lambda x:x.get('time','')):
-            meta=' · '.join(x for x in [e.get('time',''),e.get('meta','')] if x)
-            st.markdown(f"**{e.get('icon','•')} {e['title']}**"+(f" — {meta}" if meta else ''))
+        pick=_choose(items,f"w_{start.isoformat()}_{i}")
+        if pick:selected=pick
         st.divider()
+    return selected
