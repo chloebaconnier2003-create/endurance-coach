@@ -1,4 +1,4 @@
-from datetime import date, timedelta, datetime
+from datetime import date, timedelta
 
 HARD_TYPES={"rugby_match","rugby_training"}
 
@@ -12,12 +12,9 @@ def phase_for(goal_name):
     return 'BASE'
 
 def needs(phase):
-    if phase=='SEMI':
-        return [('running','quality',65,'P0'),('running','long',100,'P0'),('running','easy',50,'P1'),('swimming','easy',45,'P2'),('swimming','easy',50,'P2'),('strength','moderate',45,'P2')]
-    if phase=='TRAIL':
-        return [('trail','quality',70,'P0'),('trail','long',110,'P0'),('running','easy',45,'P1'),('strength','moderate',50,'P1'),('swimming','easy',45,'P3')]
-    if phase=='MARATHON':
-        return [('running','quality',75,'P0'),('running','long',120,'P0'),('running','easy',55,'P1'),('running','easy',45,'P2'),('cycling','easy',90,'P2'),('strength','moderate',45,'P2')]
+    if phase=='SEMI': return [('running','quality',65,'P0'),('running','long',100,'P0'),('running','easy',50,'P1'),('swimming','easy',45,'P2'),('swimming','easy',50,'P2'),('strength','moderate',45,'P2')]
+    if phase=='TRAIL': return [('trail','quality',70,'P0'),('trail','long',110,'P0'),('running','easy',45,'P1'),('strength','moderate',50,'P1'),('swimming','easy',45,'P3')]
+    if phase=='MARATHON': return [('running','quality',75,'P0'),('running','long',120,'P0'),('running','easy',55,'P1'),('running','easy',45,'P2'),('cycling','easy',90,'P2'),('strength','moderate',45,'P2')]
     return [('swimming','easy',50,'P1'),('swimming','quality',55,'P1'),('cycling','easy',120,'P0'),('cycling','quality',90,'P1'),('running','easy',50,'P1'),('running','quality',65,'P1'),('strength','moderate',45,'P2')]
 
 def title_for(sport,intensity):
@@ -38,13 +35,15 @@ def objective_for(sport,intensity,phase):
 def day_state(d, shifts, constraints):
     state={'blocked':False,'hard':False,'recovery':False,'events':[],'capacity':120}
     for s in shifts:
-        sd=date.fromisoformat(s['start_at'][:10]); ed=date.fromisoformat(s['end_at'][:10])
+        sd=date.fromisoformat(s['start_at'][:10]); ed=date.fromisoformat(s['end_at'][:10]); typ=s.get('shift_type','')
         if sd<=d<=ed:
-            state['events'].append('Garde '+s['shift_type']); state['capacity']=35
-            if s['shift_type'] in {'12h_jour','12h_nuit'}: state['blocked']=True
+            state['events'].append(typ)
+            if typ in {'12h_jour','12h_nuit','24h'}: state['capacity']=35
+            elif typ in {'formation','sst'}: state['capacity']=60
+            if typ in {'12h_jour','12h_nuit'}: state['blocked']=True
         if ed==d-timedelta(days=1):
-            if s['shift_type']=='24h': state['recovery']=True; state['capacity']=min(state['capacity'],60)
-            if s['shift_type']=='12h_nuit': state['recovery']=True; state['capacity']=min(state['capacity'],45)
+            if typ=='24h': state['recovery']=True; state['capacity']=min(state['capacity'],60)
+            if typ=='12h_nuit': state['recovery']=True; state['capacity']=min(state['capacity'],45)
     for c in constraints:
         if date.fromisoformat(c['event_date'])==d:
             state['events'].append(c['title'])
@@ -54,6 +53,9 @@ def day_state(d, shifts, constraints):
 
 def compatible(session,d,state,placed):
     sport,intensity,duration,priority=session
+    same_day=[p for p in placed if p['date']==d]
+    # V5.1: one generated endurance workout per day by default. Fixed rugby/dance remain separate constraints.
+    if same_day: return False
     if state['blocked']: return False
     if duration>state['capacity']+25: return False
     if state['recovery'] and intensity=='quality': return False
