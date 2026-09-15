@@ -1,7 +1,7 @@
 from datetime import timedelta, date
 
 def srpe(duration,rpe):
-    try:return float(duration)*float(rpe)
+    try:return float(duration or 0)*float(rpe or 0)
     except:return 0
 
 def readiness(ci,recent_shift=None):
@@ -13,16 +13,15 @@ def readiness(ci,recent_shift=None):
     elif sleep>=8: score+=4
     score-=max(0,fatigue-3)*7; score-=max(0,soreness-3)*5; score-=max(0,stress-3)*4; score+=max(0,motivation-3)*3
     if recent_shift:
-        typ=recent_shift.get("shift_type"); h=recent_shift.get("hours_since",999)
+        typ=recent_shift.get("shift_type") or ""; h=float(recent_shift.get("hours_since") or 999)
         if typ=="24h" and h<24: score-=10; reasons.append("Sortie récente d'une garde 24 h.")
         elif typ=="12h_nuit" and h<18: score-=15; reasons.append("Récupération après garde de nuit.")
         elif typ=="12h_jour" and h<12: score-=8; reasons.append("Récupération après garde de jour.")
-    score=max(0,min(100,score))
-    status="EXCELLENT" if score>=85 else "GOOD" if score>=72 else "NORMAL" if score>=58 else "REDUCED" if score>=45 else "LOW" if score>=30 else "VERY_LOW"
+    score=max(0,min(100,score)); status="EXCELLENT" if score>=85 else "GOOD" if score>=72 else "NORMAL" if score>=58 else "REDUCED" if score>=45 else "LOW" if score>=30 else "VERY_LOW"
     return round(score),status,reasons
 
 def decision(ci,session,recent_shift=None,rugby_recent=False):
-    score,status,reasons=readiness(ci,recent_shift); pain=float((ci or {}).get("pain_score") or 0); trend=(ci or {}).get("pain_trend") or "stable"; sport=(session or {}).get("sport","").lower(); intensity=(session or {}).get("intensity","easy").lower(); priority=(session or {}).get("priority","P2"); hard=intensity in {"threshold","vo2","hard","race"}
+    score,status,reasons=readiness(ci,recent_shift); s=session or {}; pain=float((ci or {}).get("pain_score") or 0); trend=(ci or {}).get("pain_trend") or "stable"; sport=str(s.get("sport") or "").lower(); intensity=str(s.get("intensity") or "easy").lower(); priority=str(s.get("priority") or "P2"); hard=intensity in {"threshold","vo2","hard","race","quality"}
     if pain>=7 or (pain>=5 and trend=="aggravation"): return "MEDICAL_FLAG",score,status,"Douleur importante ou en aggravation : éviter la séance déclenchante et envisager un avis professionnel.","Repos / activité indolore selon tolérance."
     if sport in {"running","trail"} and pain>=4:return "REPLACE",score,status,"Douleur incompatible avec une séance à impacts aujourd'hui.","Natation facile ou vélo facile si indolore."
     if rugby_recent and sport in {"running","trail"} and hard:return ("MOVE" if priority in {"P0","P1"} else "REPLACE"),score,status,"Rugby récent + course intense : densité d'impacts trop élevée.","Natation technique ou endurance facile."
