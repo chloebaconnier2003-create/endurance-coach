@@ -31,17 +31,18 @@ def last_shift():
  if not past:return None
  e,x=max(past,key=lambda z:z[0]); x=dict(x); x['hours_since']=(datetime.now()-e).total_seconds()/3600; return x
 def rugby_recent(): return bool(query("SELECT id FROM activities WHERE sport='rugby' AND start_at>=? LIMIT 1",((datetime.now()-timedelta(hours=36)).isoformat(timespec='minutes'),)))
+def work_label(t): return {'24h':'Garde 24 h','12h_jour':'Garde 12 h jour','12h_nuit':'Garde 12 h nuit','formation':'Formation 08h–16h','sst':'SST 07h30–17h'}.get(t,'Travail '+str(t))
 def events_between(start,end):
  events=[]; ss=shifts_between(start,end); rec,cancel=recurring_instances(query('SELECT * FROM recurring_rules WHERE active=1'),ss,start,end)
  for x in ss:
-  d=datetime.fromisoformat(x['start_at']).date(); events.append({'date':d,'time':x['start_at'][11:16],'icon':'🚑','title':'Garde 24 h' if x['shift_type']=='24h' else 'Garde '+x['shift_type'],'meta':'déplacée' if x.get('moved') else ('cycle' if x.get('virtual') else 'exceptionnelle')})
+  d=datetime.fromisoformat(x['start_at']).date(); events.append({'date':d,'time':x['start_at'][11:16],'icon':'🚑','title':work_label(x['shift_type']),'meta':'déplacée' if x.get('moved') else ('cycle' if x.get('virtual') else ('trajets inclus' if x['shift_type'] in {'formation','sst'} else 'exceptionnelle'))})
  for x in rec: events.append({'date':x['date'],'time':x['start_at'].strftime('%H:%M'),'icon':ico(x['event_type']),'title':x['title'],'meta':'récurrent'})
  for x in query('SELECT * FROM constraints WHERE event_date>=? AND event_date<=?',(start.isoformat(),end.isoformat())): events.append({'date':date.fromisoformat(x['event_date']),'icon':'📌','title':x['title'],'meta':'fixe'})
  for x in query("SELECT * FROM sessions WHERE date(start_at)>=? AND date(start_at)<=? AND status='planned'",(start.isoformat(),end.isoformat())): events.append({'date':date.fromisoformat(x['start_at'][:10]),'time':x['start_at'][11:16],'icon':ico(x['sport']),'title':x['title'],'meta':f"{x['duration_min'] or '?'} min"})
  for x in query("SELECT * FROM goals WHERE event_date!='' AND event_date>=? AND event_date<=?",(start.isoformat(),end.isoformat())): events.append({'date':date.fromisoformat(x['event_date']),'icon':'🏁','title':x['name'],'meta':'objectif'})
  return events,cancel
 g=next_goal(); countdown=(date.fromisoformat(g['event_date'])-date.today()).days if g else None
-st.markdown(f"<div class='hero'><small>ENDURANCE COACH V4.4</small><h2>{'Objectif : '+g['name'] if g else 'Ton coach adaptatif'}</h2><div>{'J-'+str(countdown) if countdown is not None else ''}</div></div>",unsafe_allow_html=True)
+st.markdown(f"<div class='hero'><small>ENDURANCE COACH V4.5</small><h2>{'Objectif : '+g['name'] if g else 'Ton coach adaptatif'}</h2><div>{'J-'+str(countdown) if countdown is not None else ''}</div></div>",unsafe_allow_html=True)
 nav=st.segmented_control('Navigation',['Aujourd’hui','Planning','Progression','Coach','Ajouter','Plus'],default='Aujourd’hui',label_visibility='collapsed') or 'Aujourd’hui'
 if nav=='Aujourd’hui':
  ci=checkin(); ps=today_session(); dec,score,status,why,action=decision(ci,ps,last_shift(),rugby_recent()); a,b=st.columns([1,2]); a.metric('État du jour',status,score); b.markdown(f"### {dec.replace('_',' ').title()}\n{why}")
@@ -76,15 +77,20 @@ elif nav=='Progression':
 elif nav=='Coach':
  ci=checkin(); ps=today_session(); dec,score,status,why,action=decision(ci,ps,last_shift(),rugby_recent()); st.header('Coach'); st.markdown(f"### {dec.replace('_',' ').title()}"); st.write(why); st.success(action); st.text_area('Message au coach',placeholder='Ex. J’ai une garde jeudi, adapte ma semaine…')
 elif nav=='Ajouter':
- st.header('Ajouter'); kind=st.selectbox('Type',['🏋️ Séance','🚑 Garde exceptionnelle','🔁 Récurrence','🗓️ Cycle travail','📌 Événement','🏁 Objectif','✅ Activité'])
+ st.header('Ajouter'); kind=st.selectbox('Type',['🏋️ Séance','🚑 Travail / garde','🔁 Récurrence','🗓️ Cycle travail','📌 Événement','🏁 Objectif','✅ Activité'])
  if kind=='🏋️ Séance':
   with st.form('session'):
    sport=st.selectbox('Sport',['running','cycling','swimming','trail','strength']); c1,c2=st.columns(2); d=c1.date_input('Jour',date.today()); t=c2.time_input('Heure',time(18)); title=st.text_input('Nom'); duration=st.number_input('Durée',10,600,60,5); intensity=st.selectbox('Intensité',['easy','moderate','threshold','hard']); objective=st.text_area('Consignes'); priority=st.select_slider('Importance',['P3','P2','P1','P0'],value='P2')
    if st.form_submit_button('Ajouter',use_container_width=True): execute('INSERT INTO sessions(start_at,sport,title,duration_min,priority,intensity,objective) VALUES(?,?,?,?,?,?,?)',(dtiso(d,t),sport,title or 'Séance '+sport,duration,priority,intensity,objective)); st.success('Séance ajoutée.')
- elif kind=='🚑 Garde exceptionnelle':
+ elif kind=='🚑 Travail / garde':
   with st.form('guard'):
-   typ=st.selectbox('Type',['24h','12h_jour','12h_nuit']); d=st.date_input('Jour',date.today()); defaults={'24h':(time(8),time(8),1),'12h_jour':(time(7),time(20),0),'12h_nuit':(time(19),time(8),1)}; sh,eh,plus=defaults[typ]; stt=st.time_input('Début',sh); ed=st.date_input('Fin — jour',d+timedelta(days=plus)); et=st.time_input('Fin — heure',eh)
-   if st.form_submit_button('Ajouter',use_container_width=True): execute('INSERT INTO shifts(start_at,end_at,shift_type) VALUES(?,?,?)',(dtiso(d,stt),dtiso(ed,et),typ)); st.success('Garde ajoutée.'); st.rerun()
+   labels={'Garde 24 h':'24h','Garde 12 h jour':'12h_jour','Garde 12 h nuit':'12h_nuit','Formation 08h–16h (+ 1 h trajet aller/retour)':'formation','SST 07h30–17h (+ 1 h trajet aller/retour)':'sst'}
+   chosen=st.selectbox('Type',list(labels)); typ=labels[chosen]; d=st.date_input('Jour',date.today())
+   defaults={'24h':(time(8),time(8),1),'12h_jour':(time(7),time(20),0),'12h_nuit':(time(19),time(8),1),'formation':(time(7),time(17),0),'sst':(time(6,30),time(18),0)}; sh,eh,plus=defaults[typ]
+   if typ=='formation': st.info('Formation : 08h–16h. Le planning bloque 07h–17h pour intégrer 1 h de trajet à l’aller et au retour.')
+   if typ=='sst': st.info('SST : 07h30–17h. Le planning bloque 06h30–18h pour intégrer 1 h de trajet à l’aller et au retour.')
+   stt=st.time_input('Indisponible à partir de',sh); ed=st.date_input('Fin — jour',d+timedelta(days=plus)); et=st.time_input('Disponible à partir de',eh)
+   if st.form_submit_button('Ajouter',use_container_width=True): execute('INSERT INTO shifts(start_at,end_at,shift_type,notes) VALUES(?,?,?,?)',(dtiso(d,stt),dtiso(ed,et),typ,'Horaires incluant les trajets domicile-travail/formation' if typ in {'formation','sst'} else None)); st.success('Période de travail ajoutée.'); st.rerun()
  elif kind=='🔁 Récurrence':
   with st.form('rec'):
    typ=st.selectbox('Activité',['rugby_training','rugby_match','dance','other']); title=st.text_input('Nom','Rugby'); wd=st.selectbox('Chaque',['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche']); tt=st.time_input('Heure',time(19)); dur=st.number_input('Durée',15,360,120,15); intensity=st.selectbox('Charge',['easy','moderate','hard']); sd=st.date_input('À partir du',date.today()); has_end=st.checkbox('Date de fin'); ed=st.date_input('Jusqu’au',date.today()+timedelta(days=180)) if has_end else None
@@ -129,4 +135,4 @@ else:
   for sec,data in ATHLETE.items():
    with st.expander(sec):
     for k,v in data.items(): st.write(f'**{k} :** {v}')
-st.caption('Endurance Coach V4.4 · cycle 24/72 + exceptions individuelles + calendrier mensuel/hebdomadaire.')
+st.caption('Endurance Coach V4.5 · cycle 24/72 + exceptions + Formation/SST + calendrier mensuel/hebdomadaire.')
