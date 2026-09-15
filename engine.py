@@ -14,6 +14,7 @@ def readiness(ci,recent_shift=None):
     score-=max(0,fatigue-3)*7; score-=max(0,soreness-3)*5; score-=max(0,stress-3)*4; score+=max(0,motivation-3)*3
     if recent_shift:
         typ=recent_shift.get("shift_type") or ""; h=float(recent_shift.get("hours_since") or 999)
+        # Formation and SST block time in the calendar but never reduce readiness.
         if typ=="24h" and h<24: score-=10; reasons.append("Sortie récente d'une garde 24 h.")
         elif typ=="12h_nuit" and h<18: score-=15; reasons.append("Récupération après garde de nuit.")
         elif typ=="12h_jour" and h<12: score-=8; reasons.append("Récupération après garde de jour.")
