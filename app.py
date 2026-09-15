@@ -71,7 +71,7 @@ def event_editor(e):
   if st.button('Supprimer cet événement'): execute('DELETE FROM constraints WHERE id=?',(e['id'],)); st.rerun()
  else: st.write('Objectif du calendrier. Modifie-le depuis Plus → Objectifs.')
 g=next_goal(); countdown=(date.fromisoformat(g['event_date'])-date.today()).days if g else None
-st.markdown(f"<div class='hero'><small>ENDURANCE COACH V5</small><h2>{'Objectif : '+g['name'] if g else 'Ton coach adaptatif'}</h2><div>{'J-'+str(countdown) if countdown is not None else ''}</div></div>",unsafe_allow_html=True)
+st.markdown(f"<div class='hero'><small>ENDURANCE COACH V5.2</small><h2>{'Objectif : '+g['name'] if g else 'Ton coach adaptatif'}</h2><div>{'J-'+str(countdown) if countdown is not None else ''}</div></div>",unsafe_allow_html=True)
 nav=st.segmented_control('Navigation',['Aujourd’hui','Planning','Progression','Coach','Ajouter','Plus'],default='Aujourd’hui',label_visibility='collapsed') or 'Aujourd’hui'
 if nav=='Aujourd’hui':
  ci=checkin(); ps=today_session(); dec,score,status,why,action=decision(ci,ps,last_shift(),rugby_recent()); a,b=st.columns([1,2]); a.metric('État du jour',status,score); b.markdown(f"### {dec.replace('_',' ').title()}\n{why}")
@@ -93,10 +93,14 @@ elif nav=='Planning':
  if selected: st.session_state['selected_event']=selected
  if st.session_state.get('selected_event'): st.divider(); event_editor(st.session_state['selected_event'])
  st.divider(); future=next_goal()
- if future and st.button('⚡ Recalculer les 14 prochains jours',use_container_width=True):
-  s=date.today(); h=s+timedelta(days=14); ss=shifts_between(s,h); fixed=query('SELECT * FROM constraints WHERE event_date>=? AND event_date<=?',(s.isoformat(),h.isoformat())); rec,_=recurring_instances(query('SELECT * FROM recurring_rules WHERE active=1'),ss,s,h); result=build_plan(future,ss,combined_constraints(fixed,rec)); execute("DELETE FROM sessions WHERE source='auto_v4' AND date(start_at)>=?",(s.isoformat(),))
-  for x in result['sessions']: execute("INSERT INTO sessions(start_at,sport,title,duration_min,priority,intensity,objective,source) VALUES(?,?,?,?,?,?,?,'auto_v4')",(x['date'].isoformat()+'T18:00',x['sport'],x['title'],x['duration'],x['priority'],x['intensity'],x['objective']))
-  st.success(f"{len(result['sessions'])} séances placées."); st.rerun()
+ if future and st.button('⚡ Recalculer proprement les 14 prochains jours',use_container_width=True):
+  s=date.today(); h=s+timedelta(days=13); ss=shifts_between(s,h); fixed=query('SELECT * FROM constraints WHERE event_date>=? AND event_date<=?',(s.isoformat(),h.isoformat())); rec,_=recurring_instances(query('SELECT * FROM recurring_rules WHERE active=1'),ss,s,h); result=build_plan(future,ss,combined_constraints(fixed,rec),start=s,days=14)
+  # Remove every legacy auto-generated plan in the recalculated window, regardless of old auto source name.
+  execute("DELETE FROM sessions WHERE date(start_at)>=? AND date(start_at)<=? AND (source LIKE 'auto%' OR source IS NULL OR source='')",(s.isoformat(),h.isoformat()))
+  # Extra safety: remove exact duplicate auto rows that may have survived old versions outside the normal source convention.
+  execute("DELETE FROM sessions WHERE id NOT IN (SELECT MIN(id) FROM sessions GROUP BY start_at,sport,title,duration_min,COALESCE(priority,''),COALESCE(intensity,''),COALESCE(objective,''),COALESCE(source,''))")
+  for x in result['sessions']: execute("INSERT INTO sessions(start_at,sport,title,duration_min,priority,intensity,objective,source) VALUES(?,?,?,?,?,?,?,'auto_v5')",(x['date'].isoformat()+'T18:00',x['sport'],x['title'],x['duration'],x['priority'],x['intensity'],x['objective']))
+  st.session_state.pop('selected_event',None); st.success(f"Planning nettoyé et recalculé : {len(result['sessions'])} séances placées, {len(result['unscheduled'])} non forcées."); st.rerun()
  if cancel:
   with st.expander('Annulations automatiques'):
    for x in cancel: st.warning(f"{x['date'].strftime('%d/%m')} · {x['title']} — {x['reason']}")
@@ -123,22 +127,19 @@ elif nav=='Ajouter':
   anchor=st.date_input('Date d’une garde de référence',date.today())
   if st.button('Activer cycle 24/72'): execute('UPDATE work_cycles SET active=0'); execute('INSERT INTO work_cycles(title,anchor_date,cycle_days,active) VALUES(?,?,4,1)',('Cycle 24/72',anchor.isoformat())); st.rerun()
  elif kind=='📌 Événement':
-  d=st.date_input('Jour',date.today()); title=st.text_input('Nom'); typ=st.selectbox('Type',['personal','rugby_training','rugby_match','dance','other']); dur=st.number_input('Durée',15,600,60,15); intensity=st.selectbox('Charge',['easy','moderate','hard'])
-  if st.button('Ajouter événement'): execute('INSERT INTO constraints(event_date,event_type,title,duration_min,intensity,fixed) VALUES(?,?,?,?,?,1)',(d.isoformat(),typ,title,dur,intensity)); st.rerun()
+  title=st.text_input('Nom','Mont Ventoux'); d=st.date_input('Date',date.today()); typ=st.selectbox('Type',['personal','mission','other']); dur=st.number_input('Durée estimée',15,1000,120,15); intensity=st.selectbox('Charge',['easy','moderate','hard'])
+  if st.button('Ajouter événement'): execute('INSERT INTO constraints(event_date,event_type,title,duration_min,intensity) VALUES(?,?,?,?,?)',(d.isoformat(),typ,title,dur,intensity)); st.rerun()
  elif kind=='🏁 Objectif':
-  name=st.text_input('Objectif'); d=st.date_input('Date',date.today()+timedelta(days=30)); sport=st.selectbox('Sport',['running','trail','cycling','triathlon','other']); priority=st.selectbox('Priorité',['A','A/B','B','C']); notes=st.text_area('Détails')
-  if st.button('Créer objectif'): execute('INSERT INTO goals(name,event_date,sport,kind,priority,notes) VALUES(?,?,?,?,?,?)',(name,d.isoformat(),sport,'competition',priority,notes)); st.rerun()
+  name=st.text_input('Nom'); d=st.date_input('Date',date.today()); sport=st.text_input('Sport','running'); priority=st.selectbox('Priorité',['A','A/B','B','C','D'])
+  if st.button('Ajouter objectif'): execute('INSERT INTO goals(name,event_date,sport,kind,priority) VALUES(?,?,?,?,?)',(name,d.isoformat(),sport,'competition',priority)); st.rerun()
  else:
-  d=st.date_input('Jour',date.today()); t=st.time_input('Heure',time(18)); sport=st.selectbox('Sport',['running','trail','cycling','swimming','rugby','dance','strength','other']); title=st.text_input('Titre'); dur=st.number_input('Durée',1,1000,60); dist=st.number_input('Distance km',0.,500.,0.,.1); elev=st.number_input('D+',0,10000,0,10); rpe=st.slider('RPE',1,10,4); pain=st.slider('Douleur après',0,10,0)
-  if st.button('Enregistrer activité'): execute('INSERT INTO activities(start_at,sport,title,duration_min,distance_km,elevation_m,rpe,pain) VALUES(?,?,?,?,?,?,?,?)',(dtiso(d,t),sport,title,dur,dist,elev,rpe,pain)); st.rerun()
+  sport=st.selectbox('Sport',['running','cycling','swimming','trail','rugby','dance','strength']); d=st.date_input('Date',date.today()); dur=st.number_input('Durée',1,1000,60); rpe=st.slider('RPE',1,10,4); title=st.text_input('Titre')
+  if st.button('Enregistrer activité'): execute('INSERT INTO activities(start_at,sport,title,duration_min,rpe) VALUES(?,?,?,?,?)',(d.isoformat()+'T12:00',sport,title,dur,rpe)); st.rerun()
 else:
- tab1,tab2,tab3=st.tabs(['Récurrences','Objectifs','Profil'])
- with tab1:
-  for r in query('SELECT * FROM recurring_rules WHERE active=1'): st.write(f"**{r['title']}** · {['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'][r['weekday']]} {r['start_time']}")
- with tab2:
-  for x in query("SELECT * FROM goals ORDER BY event_date"): st.write(f"**{x['name']}** · {x['event_date'] or 'date à définir'} · {x['priority']}")
- with tab3:
-  for sec,data in ATHLETE.items():
-   with st.expander(sec):
-    for k,v in data.items(): st.write(f'**{k} :** {v}')
-st.caption('Endurance Coach V5 · calendrier interactif · édition des occurrences · Workout Engine.')
+ st.header('Plus'); st.subheader('Objectifs');
+ for x in query('SELECT * FROM goals ORDER BY event_date'): st.write(f"🏁 **{x['name']}** · {x['event_date']} · priorité {x['priority']}")
+ st.subheader('Profil athlète')
+ for sec,data in ATHLETE.items():
+  with st.expander(sec):
+   for k,v in data.items(): st.write(f'**{k} :** {v}')
+st.caption('Endurance Coach V5.2 · calendrier interactif + Workout Engine + recalcul idempotent')
