@@ -7,10 +7,11 @@ from engine import decision,srpe
 from scheduler import build_plan
 from calendar_engine import recurring_instances,combined_constraints,all_shifts
 from calendar_views import month_view,week_view
+from workout_engine import detailed_workout
 st.set_page_config(page_title='Endurance Coach',page_icon='⚡',layout='wide',initial_sidebar_state='collapsed'); init()
 if not query('SELECT id FROM goals LIMIT 1'):
-    for g in GOALS: execute('INSERT INTO goals(name,event_date,sport,kind,priority,notes) VALUES(?,?,?,?,?,?)',g)
-st.markdown("""<style>.block-container{max-width:1100px;padding-top:1rem;padding-bottom:5rem}.hero,.card{padding:1rem;border-radius:20px}.hero{background:linear-gradient(135deg,#15171c,#252a33);color:white}.card{border:1px solid rgba(128,128,128,.22);margin:.6rem 0}.big{font-size:2.2rem;font-weight:750}.stButton button{border-radius:14px;min-height:44px;font-weight:600}</style>""",unsafe_allow_html=True)
+ for g in GOALS: execute('INSERT INTO goals(name,event_date,sport,kind,priority,notes) VALUES(?,?,?,?,?,?)',g)
+st.markdown("""<style>.block-container{max-width:1150px;padding-top:1rem;padding-bottom:5rem}.hero,.card{padding:1rem;border-radius:20px}.hero{background:linear-gradient(135deg,#15171c,#252a33);color:white}.card{border:1px solid rgba(128,128,128,.22);margin:.6rem 0}.stButton button{border-radius:12px;min-height:38px;font-weight:600}.detail{padding:1rem;border:1px solid rgba(128,128,128,.25);border-radius:18px}</style>""",unsafe_allow_html=True)
 def one(sql,args=()):
  r=query(sql,args); return r[0] if r else None
 def next_goal(): return one("SELECT * FROM goals WHERE COALESCE(event_date,'')!='' AND event_date>=? ORDER BY event_date LIMIT 1",(date.today().isoformat(),))
@@ -20,7 +21,6 @@ def ico(s): return {'running':'🏃','trail':'⛰️','cycling':'🚴','swimming
 def dtiso(d,t): return datetime.combine(d,t).isoformat(timespec='minutes')
 def shifts_between(start,end):
  manual=query('SELECT * FROM shifts WHERE date(start_at)<=? AND date(end_at)>=?',(end.isoformat(),(start-timedelta(days=1)).isoformat())); return all_shifts(manual,query('SELECT * FROM work_cycles WHERE active=1'),start,end,query('SELECT * FROM work_cycle_exceptions'))
-def recurring_between(start,end): return recurring_instances(query('SELECT * FROM recurring_rules WHERE active=1'),shifts_between(start,end),start,end)
 def last_shift():
  past=[]
  for x in shifts_between(date.today()-timedelta(days=3),date.today()):
@@ -33,34 +33,65 @@ def last_shift():
 def rugby_recent(): return bool(query("SELECT id FROM activities WHERE sport='rugby' AND start_at>=? LIMIT 1",((datetime.now()-timedelta(hours=36)).isoformat(timespec='minutes'),)))
 def work_label(t): return {'24h':'Garde 24 h','12h_jour':'Garde 12 h jour','12h_nuit':'Garde 12 h nuit','formation':'Formation 08h–16h','sst':'SST 07h30–17h'}.get(t,'Travail '+str(t))
 def events_between(start,end):
- events=[]; ss=shifts_between(start,end); rec,cancel=recurring_instances(query('SELECT * FROM recurring_rules WHERE active=1'),ss,start,end)
+ events=[]; ss=shifts_between(start,end); rules=query('SELECT * FROM recurring_rules WHERE active=1'); rec,cancel=recurring_instances(rules,ss,start,end); rex={(x['rule_id'],x['original_date']):x for x in query('SELECT * FROM recurring_exceptions')}
  for x in ss:
-  d=datetime.fromisoformat(x['start_at']).date(); events.append({'date':d,'time':x['start_at'][11:16],'icon':'🚑','title':work_label(x['shift_type']),'meta':'déplacée' if x.get('moved') else ('cycle' if x.get('virtual') else ('trajets inclus' if x['shift_type'] in {'formation','sst'} else 'exceptionnelle'))})
- for x in rec: events.append({'date':x['date'],'time':x['start_at'].strftime('%H:%M'),'icon':ico(x['event_type']),'title':x['title'],'meta':'récurrent'})
- for x in query('SELECT * FROM constraints WHERE event_date>=? AND event_date<=?',(start.isoformat(),end.isoformat())): events.append({'date':date.fromisoformat(x['event_date']),'icon':'📌','title':x['title'],'meta':'fixe'})
- for x in query("SELECT * FROM sessions WHERE date(start_at)>=? AND date(start_at)<=? AND status='planned'",(start.isoformat(),end.isoformat())): events.append({'date':date.fromisoformat(x['start_at'][:10]),'time':x['start_at'][11:16],'icon':ico(x['sport']),'title':x['title'],'meta':f"{x['duration_min'] or '?'} min"})
- for x in query("SELECT * FROM goals WHERE event_date!='' AND event_date>=? AND event_date<=?",(start.isoformat(),end.isoformat())): events.append({'date':date.fromisoformat(x['event_date']),'icon':'🏁','title':x['name'],'meta':'objectif'})
+  d=datetime.fromisoformat(x['start_at']).date(); events.append({'date':d,'time':x['start_at'][11:16],'icon':'🚑','title':work_label(x['shift_type']),'meta':'cycle' if x.get('virtual') else 'travail','kind':'cycle_shift' if x.get('virtual') else 'shift','id':x.get('id'),'cycle_id':x.get('cycle_id'),'original_date':x.get('original_date'),'start_at':x['start_at'],'end_at':x['end_at'],'uid':'sh'+str(x.get('id') or x.get('original_date'))})
+ for x in rec:
+  ex=rex.get((x['rule_id'],x['date'].isoformat()))
+  if ex and ex['action']=='delete': continue
+  if ex and ex['action']=='move' and ex.get('new_start_at'):
+   ns=datetime.fromisoformat(ex['new_start_at']); x=dict(x); x['date']=ns.date(); x['start_at']=ns; x['end_at']=datetime.fromisoformat(ex['new_end_at'])
+  events.append({'date':x['date'],'time':x['start_at'].strftime('%H:%M'),'icon':ico(x['event_type']),'title':x['title'],'meta':'récurrent','kind':'recurring','rule_id':x['rule_id'],'original_date':x.get('date').isoformat() if not ex else ex['original_date'],'duration_min':x['duration_min'],'intensity':x['intensity'],'uid':f"r{x['rule_id']}_{x['date']}"})
+ for x in query('SELECT * FROM constraints WHERE event_date>=? AND event_date<=?',(start.isoformat(),end.isoformat())): events.append({'date':date.fromisoformat(x['event_date']),'icon':'📌','title':x['title'],'meta':'fixe','kind':'constraint','id':x['id'],'uid':'c'+str(x['id'])})
+ for x in query("SELECT * FROM sessions WHERE date(start_at)>=? AND date(start_at)<=? AND status='planned'",(start.isoformat(),end.isoformat())): events.append({'date':date.fromisoformat(x['start_at'][:10]),'time':x['start_at'][11:16],'icon':ico(x['sport']),'title':x['title'],'meta':f"{x['duration_min'] or '?'} min",'kind':'session','id':x['id'],'sport':x['sport'],'duration_min':x['duration_min'],'intensity':x['intensity'],'objective':x['objective'],'priority':x['priority'],'start_at':x['start_at'],'uid':'s'+str(x['id'])})
+ for x in query("SELECT * FROM goals WHERE event_date!='' AND event_date>=? AND event_date<=?",(start.isoformat(),end.isoformat())): events.append({'date':date.fromisoformat(x['event_date']),'icon':'🏁','title':x['name'],'meta':'objectif','kind':'goal','id':x['id'],'uid':'g'+str(x['id'])})
  return events,cancel
+def event_editor(e):
+ st.subheader(f"{e.get('icon','📌')} {e['title']}"); st.caption(f"{e['date'].strftime('%d/%m/%Y')} · {e.get('time','')} · {e.get('meta','')}")
+ if e['kind']=='session':
+  w=detailed_workout(e.get('sport'),e.get('intensity'),e.get('duration_min'),e.get('objective')); st.markdown(f"### {w['summary']}"); st.write('**Échauffement** — '+w['warmup']); st.write('**Bloc principal** — '+w['main']); st.write('**Retour au calme** — '+w['cooldown']); st.write('**Cible** — '+w['intensity_target']); st.write('**Nutrition / hydratation** — '+w['nutrition']); st.info('Pourquoi cette séance : '+w['coach_note'])
+  with st.expander('Modifier / déplacer / supprimer'):
+   nd=st.date_input('Jour',e['date'],key='sd'+str(e['id'])); nt=st.time_input('Heure',datetime.fromisoformat(e['start_at']).time(),key='st'+str(e['id'])); dur=st.number_input('Durée',10,600,int(e.get('duration_min') or 60),5,key='du'+str(e['id'])); c1,c2=st.columns(2)
+   if c1.button('Enregistrer',key='save_s'+str(e['id']),use_container_width=True): execute('UPDATE sessions SET start_at=?,duration_min=? WHERE id=?',(dtiso(nd,nt),dur,e['id'])); st.rerun()
+   if c2.button('Supprimer',key='del_s'+str(e['id']),use_container_width=True): execute('DELETE FROM sessions WHERE id=?',(e['id'],)); st.rerun()
+ elif e['kind']=='cycle_shift':
+  st.write('Garde générée par le cycle 24/72. Cette modification ne décale pas les autres gardes.'); nd=st.date_input('Nouvelle date',e['date'],key='gd'); nt=st.time_input('Nouvelle heure',datetime.fromisoformat(e['start_at']).time(),key='gt'); c1,c2,c3=st.columns(3)
+  if c1.button('Déplacer',use_container_width=True): ns=datetime.combine(nd,nt); execute("INSERT INTO work_cycle_exceptions(cycle_id,original_date,action,new_start_at,new_end_at) VALUES(?,?,?,?,?) ON CONFLICT(cycle_id,original_date) DO UPDATE SET action='move',new_start_at=excluded.new_start_at,new_end_at=excluded.new_end_at",(e['cycle_id'],e['original_date'],'move',ns.isoformat(timespec='minutes'),(ns+timedelta(hours=24)).isoformat(timespec='minutes'))); st.rerun()
+  if c2.button('Supprimer cette occurrence',use_container_width=True): execute("INSERT INTO work_cycle_exceptions(cycle_id,original_date,action) VALUES(?,?,?) ON CONFLICT(cycle_id,original_date) DO UPDATE SET action='delete',new_start_at=NULL,new_end_at=NULL",(e['cycle_id'],e['original_date'],'delete')); st.rerun()
+  if c3.button('Rétablir',use_container_width=True): execute('DELETE FROM work_cycle_exceptions WHERE cycle_id=? AND original_date=?',(e['cycle_id'],e['original_date'])); st.rerun()
+ elif e['kind']=='shift':
+  st.write('Période de travail ajoutée manuellement.'); c1,c2=st.columns(2); nd=c1.date_input('Jour',e['date'],key='md'); nt=c2.time_input('Début',datetime.fromisoformat(e['start_at']).time(),key='mt')
+  if st.button('Déplacer',key='mvmanual'): old=datetime.fromisoformat(e['start_at']); end=datetime.fromisoformat(e['end_at']); ns=datetime.combine(nd,nt); execute('UPDATE shifts SET start_at=?,end_at=? WHERE id=?',(ns.isoformat(timespec='minutes'),(ns+(end-old)).isoformat(timespec='minutes'),e['id'])); st.rerun()
+  if st.button('Supprimer',key='delmanual'): execute('DELETE FROM shifts WHERE id=?',(e['id'],)); st.rerun()
+ elif e['kind']=='recurring':
+  st.write('Occurrence issue d’une récurrence. Tu peux agir uniquement sur cette date sans modifier la série.'); nd=st.date_input('Nouvelle date',e['date'],key='rd'); nt=st.time_input('Nouvelle heure',datetime.strptime(e.get('time','19:00'),'%H:%M').time(),key='rt'); c1,c2=st.columns(2)
+  if c1.button('Déplacer cette occurrence',use_container_width=True): ns=datetime.combine(nd,nt); execute("INSERT INTO recurring_exceptions(rule_id,original_date,action,new_start_at,new_end_at) VALUES(?,?,?,?,?) ON CONFLICT(rule_id,original_date) DO UPDATE SET action='move',new_start_at=excluded.new_start_at,new_end_at=excluded.new_end_at",(e['rule_id'],e['original_date'],'move',ns.isoformat(timespec='minutes'),(ns+timedelta(minutes=int(e.get('duration_min') or 90))).isoformat(timespec='minutes'))); st.rerun()
+  if c2.button('Supprimer cette occurrence',use_container_width=True): execute("INSERT INTO recurring_exceptions(rule_id,original_date,action) VALUES(?,?,?) ON CONFLICT(rule_id,original_date) DO UPDATE SET action='delete',new_start_at=NULL,new_end_at=NULL",(e['rule_id'],e['original_date'],'delete')); st.rerun()
+ elif e['kind']=='constraint':
+  if st.button('Supprimer cet événement'): execute('DELETE FROM constraints WHERE id=?',(e['id'],)); st.rerun()
+ else: st.write('Objectif du calendrier. Modifie-le depuis Plus → Objectifs.')
 g=next_goal(); countdown=(date.fromisoformat(g['event_date'])-date.today()).days if g else None
-st.markdown(f"<div class='hero'><small>ENDURANCE COACH V4.5</small><h2>{'Objectif : '+g['name'] if g else 'Ton coach adaptatif'}</h2><div>{'J-'+str(countdown) if countdown is not None else ''}</div></div>",unsafe_allow_html=True)
+st.markdown(f"<div class='hero'><small>ENDURANCE COACH V5</small><h2>{'Objectif : '+g['name'] if g else 'Ton coach adaptatif'}</h2><div>{'J-'+str(countdown) if countdown is not None else ''}</div></div>",unsafe_allow_html=True)
 nav=st.segmented_control('Navigation',['Aujourd’hui','Planning','Progression','Coach','Ajouter','Plus'],default='Aujourd’hui',label_visibility='collapsed') or 'Aujourd’hui'
 if nav=='Aujourd’hui':
  ci=checkin(); ps=today_session(); dec,score,status,why,action=decision(ci,ps,last_shift(),rugby_recent()); a,b=st.columns([1,2]); a.metric('État du jour',status,score); b.markdown(f"### {dec.replace('_',' ').title()}\n{why}")
- if ps: st.markdown(f"<div class='card'><h2>{ico(ps['sport'])} {ps['title']}</h2><b>{ps['duration_min'] or '?'} min</b><p>{ps['objective'] or ''}</p><b>{action}</b></div>",unsafe_allow_html=True)
+ if ps:
+  w=detailed_workout(ps['sport'],ps['intensity'],ps['duration_min'],ps['objective']); st.markdown(f"<div class='card'><h2>{ico(ps['sport'])} {ps['title']}</h2><b>{ps['duration_min']} min</b><p>{w['summary']}</p><b>{action}</b></div>",unsafe_allow_html=True)
+  with st.expander('Voir la séance complète'): st.write('**Échauffement** — '+w['warmup']); st.write('**Bloc principal** — '+w['main']); st.write('**Retour au calme** — '+w['cooldown']); st.write('**Cible** — '+w['intensity_target']); st.write('**Nutrition** — '+w['nutrition'])
  else: st.info('Pas de séance planifiée aujourd’hui.')
- ev,cancel=events_between(date.today(),date.today()+timedelta(days=7)); st.subheader('Prochains jours')
- for e in sorted(ev,key=lambda x:(x['date'],x.get('time','')))[:8]: st.write(f"**{e['date'].strftime('%d/%m')}** · {e['icon']} {e['title']} · {e.get('meta','')}")
  if not ci:
   with st.expander('☀️ Check-in du jour',expanded=True):
    with st.form('check'):
     c1,c2=st.columns(2); sleep=c1.number_input('Sommeil (h)',0.,14.,7.,.5); fatigue=c2.slider('Fatigue',1,5,3); quality=c1.slider('Qualité sommeil',1,5,3); motivation=c2.slider('Motivation',1,5,3); soreness=c1.slider('Courbatures',1,5,3); stress=c2.slider('Stress',1,5,3); painloc=c1.text_input('Zone douloureuse'); pain=c2.slider('Douleur',0,10,0); trend=st.selectbox('Évolution',['stable','amélioration','aggravation'])
-    if st.form_submit_button('Enregistrer',use_container_width=True): execute('INSERT INTO checkins(created_at,sleep_hours,sleep_quality,fatigue,motivation,soreness,stress,pain_location,pain_score,pain_trend) VALUES(?,?,?,?,?,?,?,?,?,?)',(datetime.now().isoformat(timespec='seconds'),sleep,quality,fatigue,motivation,soreness,stress,painloc,pain,trend)); st.rerun()
+    if st.form_submit_button('Enregistrer'): execute('INSERT INTO checkins(created_at,sleep_hours,sleep_quality,fatigue,motivation,soreness,stress,pain_location,pain_score,pain_trend) VALUES(?,?,?,?,?,?,?,?,?,?)',(datetime.now().isoformat(),sleep,quality,fatigue,motivation,soreness,stress,painloc,pain,trend)); st.rerun()
 elif nav=='Planning':
- st.header('Planning'); view=st.segmented_control('Vue',['Mois','Semaine'],default='Mois')
+ st.header('Planning interactif'); view=st.segmented_control('Vue',['Mois','Semaine'],default='Mois'); selected=None
  if view=='Mois':
-  c1,c2=st.columns(2); y=c1.selectbox('Année',range(date.today().year,date.today().year+3)); m=c2.selectbox('Mois',range(1,13),index=date.today().month-1,format_func=lambda x:['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'][x-1]); start=date(y,m,1); end=(date(y+1,1,1)-timedelta(days=1)) if m==12 else date(y,m+1,1)-timedelta(days=1); ev,cancel=events_between(start,end); month_view(y,m,ev)
+  c1,c2=st.columns(2); y=c1.selectbox('Année',range(date.today().year,date.today().year+3)); m=c2.selectbox('Mois',range(1,13),index=date.today().month-1,format_func=lambda x:['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'][x-1]); start=date(y,m,1); end=(date(y+1,1,1)-timedelta(days=1)) if m==12 else date(y,m+1,1)-timedelta(days=1); ev,cancel=events_between(start,end); selected=month_view(y,m,ev)
  else:
-  chosen=st.date_input('Une date de la semaine',date.today()); start=chosen-timedelta(days=chosen.weekday()); end=start+timedelta(days=6); ev,cancel=events_between(start,end); week_view(start,ev)
+  chosen=st.date_input('Une date de la semaine',date.today()); start=chosen-timedelta(days=chosen.weekday()); end=start+timedelta(days=6); ev,cancel=events_between(start,end); selected=week_view(start,ev)
+ if selected: st.session_state['selected_event']=selected
+ if st.session_state.get('selected_event'): st.divider(); event_editor(st.session_state['selected_event'])
  st.divider(); future=next_goal()
  if future and st.button('⚡ Recalculer les 14 prochains jours',use_container_width=True):
   s=date.today(); h=s+timedelta(days=14); ss=shifts_between(s,h); fixed=query('SELECT * FROM constraints WHERE event_date>=? AND event_date<=?',(s.isoformat(),h.isoformat())); rec,_=recurring_instances(query('SELECT * FROM recurring_rules WHERE active=1'),ss,s,h); result=build_plan(future,ss,combined_constraints(fixed,rec)); execute("DELETE FROM sessions WHERE source='auto_v4' AND date(start_at)>=?",(s.isoformat(),))
@@ -80,59 +111,34 @@ elif nav=='Ajouter':
  st.header('Ajouter'); kind=st.selectbox('Type',['🏋️ Séance','🚑 Travail / garde','🔁 Récurrence','🗓️ Cycle travail','📌 Événement','🏁 Objectif','✅ Activité'])
  if kind=='🏋️ Séance':
   with st.form('session'):
-   sport=st.selectbox('Sport',['running','cycling','swimming','trail','strength']); c1,c2=st.columns(2); d=c1.date_input('Jour',date.today()); t=c2.time_input('Heure',time(18)); title=st.text_input('Nom'); duration=st.number_input('Durée',10,600,60,5); intensity=st.selectbox('Intensité',['easy','moderate','threshold','hard']); objective=st.text_area('Consignes'); priority=st.select_slider('Importance',['P3','P2','P1','P0'],value='P2')
-   if st.form_submit_button('Ajouter',use_container_width=True): execute('INSERT INTO sessions(start_at,sport,title,duration_min,priority,intensity,objective) VALUES(?,?,?,?,?,?,?)',(dtiso(d,t),sport,title or 'Séance '+sport,duration,priority,intensity,objective)); st.success('Séance ajoutée.')
+   sport=st.selectbox('Sport',['running','cycling','swimming','trail','strength']); c1,c2=st.columns(2); d=c1.date_input('Jour',date.today()); t=c2.time_input('Heure',time(18)); title=st.text_input('Nom'); duration=st.number_input('Durée',10,600,60,5); intensity=st.selectbox('Intensité',['easy','moderate','threshold','hard']); objective=st.text_area('Objectif / consignes'); priority=st.select_slider('Importance',['P3','P2','P1','P0'],value='P2')
+   if st.form_submit_button('Ajouter'): execute('INSERT INTO sessions(start_at,sport,title,duration_min,priority,intensity,objective) VALUES(?,?,?,?,?,?,?)',(dtiso(d,t),sport,title or 'Séance '+sport,duration,priority,intensity,objective)); st.success('Séance ajoutée.')
  elif kind=='🚑 Travail / garde':
-  with st.form('guard'):
-   labels={'Garde 24 h':'24h','Garde 12 h jour':'12h_jour','Garde 12 h nuit':'12h_nuit','Formation 08h–16h (+ 1 h trajet aller/retour)':'formation','SST 07h30–17h (+ 1 h trajet aller/retour)':'sst'}
-   chosen=st.selectbox('Type',list(labels)); typ=labels[chosen]; d=st.date_input('Jour',date.today())
-   defaults={'24h':(time(8),time(8),1),'12h_jour':(time(7),time(20),0),'12h_nuit':(time(19),time(8),1),'formation':(time(7),time(17),0),'sst':(time(6,30),time(18),0)}; sh,eh,plus=defaults[typ]
-   if typ=='formation': st.info('Formation : 08h–16h. Le planning bloque 07h–17h pour intégrer 1 h de trajet à l’aller et au retour.')
-   if typ=='sst': st.info('SST : 07h30–17h. Le planning bloque 06h30–18h pour intégrer 1 h de trajet à l’aller et au retour.')
-   stt=st.time_input('Indisponible à partir de',sh); ed=st.date_input('Fin — jour',d+timedelta(days=plus)); et=st.time_input('Disponible à partir de',eh)
-   if st.form_submit_button('Ajouter',use_container_width=True): execute('INSERT INTO shifts(start_at,end_at,shift_type,notes) VALUES(?,?,?,?)',(dtiso(d,stt),dtiso(ed,et),typ,'Horaires incluant les trajets domicile-travail/formation' if typ in {'formation','sst'} else None)); st.success('Période de travail ajoutée.'); st.rerun()
+  labels={'Garde 24 h':'24h','Garde 12 h jour':'12h_jour','Garde 12 h nuit':'12h_nuit','Formation 08h–16h':'formation','SST 07h30–17h':'sst'}; chosen=st.selectbox('Type',list(labels)); typ=labels[chosen]; d=st.date_input('Jour',date.today()); defaults={'24h':(time(8),time(8),1),'12h_jour':(time(7),time(20),0),'12h_nuit':(time(19),time(8),1),'formation':(time(7),time(17),0),'sst':(time(6,30),time(18),0)}; sh,eh,plus=defaults[typ]; stt=st.time_input('Indisponible à partir de',sh); ed=st.date_input('Fin',d+timedelta(days=plus)); et=st.time_input('Disponible à partir de',eh)
+  if st.button('Ajouter travail'): execute('INSERT INTO shifts(start_at,end_at,shift_type) VALUES(?,?,?)',(dtiso(d,stt),dtiso(ed,et),typ)); st.rerun()
  elif kind=='🔁 Récurrence':
-  with st.form('rec'):
-   typ=st.selectbox('Activité',['rugby_training','rugby_match','dance','other']); title=st.text_input('Nom','Rugby'); wd=st.selectbox('Chaque',['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche']); tt=st.time_input('Heure',time(19)); dur=st.number_input('Durée',15,360,120,15); intensity=st.selectbox('Charge',['easy','moderate','hard']); sd=st.date_input('À partir du',date.today()); has_end=st.checkbox('Date de fin'); ed=st.date_input('Jusqu’au',date.today()+timedelta(days=180)) if has_end else None
-   if st.form_submit_button('Créer',use_container_width=True): execute('INSERT INTO recurring_rules(title,event_type,weekday,start_time,duration_min,intensity,start_date,end_date,active) VALUES(?,?,?,?,?,?,?,?,1)',(title,typ,['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'].index(wd),tt.strftime('%H:%M'),dur,intensity,sd.isoformat(),ed.isoformat() if ed else None)); st.success('Récurrence créée.'); st.rerun()
+  typ=st.selectbox('Activité',['rugby_training','rugby_match','dance','other']); title=st.text_input('Nom','Rugby'); wd=st.selectbox('Chaque',['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche']); tt=st.time_input('Heure',time(19)); dur=st.number_input('Durée',15,360,120,15); intensity=st.selectbox('Charge',['easy','moderate','hard']); sd=st.date_input('À partir du',date.today())
+  if st.button('Créer récurrence'): execute('INSERT INTO recurring_rules(title,event_type,weekday,start_time,duration_min,intensity,start_date,active) VALUES(?,?,?,?,?,?,?,1)',(title,typ,['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'].index(wd),tt.strftime('%H:%M'),dur,intensity,sd.isoformat())); st.rerun()
  elif kind=='🗓️ Cycle travail':
-  st.caption('24 h de garde puis 72 h de repos. Une garde de référence suffit.')
-  with st.form('cycle'):
-   title=st.text_input('Nom','Cycle 24/72'); anchor=st.date_input('Date d’une garde de référence',date.today())
-   if st.form_submit_button('Activer',use_container_width=True): execute('UPDATE work_cycles SET active=0'); execute('INSERT INTO work_cycles(title,anchor_date,cycle_days,active) VALUES(?,?,4,1)',(title,anchor.isoformat())); st.success('Cycle activé.'); st.rerun()
+  anchor=st.date_input('Date d’une garde de référence',date.today())
+  if st.button('Activer cycle 24/72'): execute('UPDATE work_cycles SET active=0'); execute('INSERT INTO work_cycles(title,anchor_date,cycle_days,active) VALUES(?,?,4,1)',('Cycle 24/72',anchor.isoformat())); st.rerun()
  elif kind=='📌 Événement':
-  with st.form('event'):
-   d=st.date_input('Jour',date.today()); title=st.text_input('Nom'); typ=st.selectbox('Type',['personal','rugby_training','rugby_match','dance','other']); dur=st.number_input('Durée',15,600,60,15); intensity=st.selectbox('Charge',['easy','moderate','hard'])
-   if st.form_submit_button('Ajouter',use_container_width=True): execute('INSERT INTO constraints(event_date,event_type,title,duration_min,intensity,fixed) VALUES(?,?,?,?,?,1)',(d.isoformat(),typ,title,dur,intensity)); st.success('Événement ajouté.')
+  d=st.date_input('Jour',date.today()); title=st.text_input('Nom'); typ=st.selectbox('Type',['personal','rugby_training','rugby_match','dance','other']); dur=st.number_input('Durée',15,600,60,15); intensity=st.selectbox('Charge',['easy','moderate','hard'])
+  if st.button('Ajouter événement'): execute('INSERT INTO constraints(event_date,event_type,title,duration_min,intensity,fixed) VALUES(?,?,?,?,?,1)',(d.isoformat(),typ,title,dur,intensity)); st.rerun()
  elif kind=='🏁 Objectif':
-  with st.form('goal'):
-   name=st.text_input('Objectif'); d=st.date_input('Date',date.today()+timedelta(days=30)); sport=st.selectbox('Sport',['running','trail','cycling','triathlon','other']); priority=st.selectbox('Priorité',['A','A/B','B','C']); notes=st.text_area('Détails')
-   if st.form_submit_button('Créer',use_container_width=True): execute('INSERT INTO goals(name,event_date,sport,kind,priority,notes) VALUES(?,?,?,?,?,?)',(name,d.isoformat(),sport,'competition',priority,notes)); st.success('Objectif créé.')
+  name=st.text_input('Objectif'); d=st.date_input('Date',date.today()+timedelta(days=30)); sport=st.selectbox('Sport',['running','trail','cycling','triathlon','other']); priority=st.selectbox('Priorité',['A','A/B','B','C']); notes=st.text_area('Détails')
+  if st.button('Créer objectif'): execute('INSERT INTO goals(name,event_date,sport,kind,priority,notes) VALUES(?,?,?,?,?,?)',(name,d.isoformat(),sport,'competition',priority,notes)); st.rerun()
  else:
-  with st.form('activity'):
-   d=st.date_input('Jour',date.today()); t=st.time_input('Heure',time(18)); sport=st.selectbox('Sport',['running','trail','cycling','swimming','rugby','dance','strength','other']); title=st.text_input('Titre'); dur=st.number_input('Durée',1,1000,60); dist=st.number_input('Distance km',0.,500.,0.,.1); elev=st.number_input('D+',0,10000,0,10); rpe=st.slider('RPE',1,10,4); pain=st.slider('Douleur après',0,10,0)
-  if st.form_submit_button('Enregistrer',use_container_width=True): execute('INSERT INTO activities(start_at,sport,title,duration_min,distance_km,elevation_m,rpe,pain) VALUES(?,?,?,?,?,?,?,?)',(dtiso(d,t),sport,title,dur,dist,elev,rpe,pain)); st.success('Activité enregistrée.')
+  d=st.date_input('Jour',date.today()); t=st.time_input('Heure',time(18)); sport=st.selectbox('Sport',['running','trail','cycling','swimming','rugby','dance','strength','other']); title=st.text_input('Titre'); dur=st.number_input('Durée',1,1000,60); dist=st.number_input('Distance km',0.,500.,0.,.1); elev=st.number_input('D+',0,10000,0,10); rpe=st.slider('RPE',1,10,4); pain=st.slider('Douleur après',0,10,0)
+  if st.button('Enregistrer activité'): execute('INSERT INTO activities(start_at,sport,title,duration_min,distance_km,elevation_m,rpe,pain) VALUES(?,?,?,?,?,?,?,?)',(dtiso(d,t),sport,title,dur,dist,elev,rpe,pain)); st.rerun()
 else:
- tab1,tab2,tab3=st.tabs(['Gérer cycle travail','Objectifs','Profil'])
+ tab1,tab2,tab3=st.tabs(['Récurrences','Objectifs','Profil'])
  with tab1:
-  cycles=query('SELECT * FROM work_cycles WHERE active=1')
-  if not cycles: st.info('Active le cycle dans Ajouter → Cycle travail.')
-  else:
-   auto=[x for x in shifts_between(date.today()-timedelta(days=7),date.today()+timedelta(days=90)) if x.get('virtual')]; st.caption('Une exception ne décale jamais les gardes suivantes.')
-   labels={f"{datetime.fromisoformat(x['start_at']).strftime('%d/%m/%Y')}"+(' · déplacée' if x.get('moved') else ''):x for x in auto}
-   if labels:
-    x=labels[st.selectbox('Garde du cycle',list(labels))]; action=st.radio('Action',['Déplacer cette garde uniquement','Supprimer cette garde uniquement','Rétablir la garde théorique'])
-    if action.startswith('Déplacer'):
-     nd=st.date_input('Nouvelle date',datetime.fromisoformat(x['start_at']).date()); nt=st.time_input('Nouvelle heure',time(8))
-     if st.button('Confirmer le déplacement',use_container_width=True):
-      ns=datetime.combine(nd,nt); ne=ns+timedelta(hours=24); execute("INSERT INTO work_cycle_exceptions(cycle_id,original_date,action,new_start_at,new_end_at) VALUES(?,?,?,?,?) ON CONFLICT(cycle_id,original_date) DO UPDATE SET action=excluded.action,new_start_at=excluded.new_start_at,new_end_at=excluded.new_end_at",(x['cycle_id'],x['original_date'],'move',ns.isoformat(timespec='minutes'),ne.isoformat(timespec='minutes'))); st.success('Garde déplacée sans modifier le cycle.'); st.rerun()
-    elif action.startswith('Supprimer'):
-     if st.button('Confirmer la suppression',use_container_width=True): execute("INSERT INTO work_cycle_exceptions(cycle_id,original_date,action) VALUES(?,?,?) ON CONFLICT(cycle_id,original_date) DO UPDATE SET action=excluded.action,new_start_at=NULL,new_end_at=NULL",(x['cycle_id'],x['original_date'],'delete')); st.success('Occurrence supprimée.'); st.rerun()
-    elif st.button('Rétablir',use_container_width=True): execute('DELETE FROM work_cycle_exceptions WHERE cycle_id=? AND original_date=?',(x['cycle_id'],x['original_date'])); st.success('Garde théorique rétablie.'); st.rerun()
+  for r in query('SELECT * FROM recurring_rules WHERE active=1'): st.write(f"**{r['title']}** · {['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'][r['weekday']]} {r['start_time']}")
  with tab2:
-  for x in query("SELECT * FROM goals ORDER BY CASE WHEN event_date='' THEN 1 ELSE 0 END,event_date"): st.write(f"**{x['name']}** · {x['event_date'] or 'date à définir'} · {x['priority']}")
+  for x in query("SELECT * FROM goals ORDER BY event_date"): st.write(f"**{x['name']}** · {x['event_date'] or 'date à définir'} · {x['priority']}")
  with tab3:
   for sec,data in ATHLETE.items():
    with st.expander(sec):
     for k,v in data.items(): st.write(f'**{k} :** {v}')
-st.caption('Endurance Coach V4.5 · cycle 24/72 + exceptions + Formation/SST + calendrier mensuel/hebdomadaire.')
+st.caption('Endurance Coach V5 · calendrier interactif · édition des occurrences · Workout Engine.')
