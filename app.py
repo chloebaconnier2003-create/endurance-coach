@@ -9,7 +9,7 @@ from calendar_views import month_view,week_view
 from workout_engine import detailed_workout
 from performance_engine import load_summary
 from coach_engine import coach_brief,adaptation_options
-from v7_pages import week_page,roadmap_page,goals_page,tests_page,records_page,road_page,stats_page
+from v7_pages import week_page,roadmap_page,goals_page,tests_page,records_page,road_page,stats_page,rugby_matches_page
 st.set_page_config(page_title='Endurance Coach V7',page_icon='⚡',layout='wide',initial_sidebar_state='collapsed');init()
 if not query('SELECT id FROM goals LIMIT 1'):
  for g in GOALS:execute('INSERT INTO goals(name,event_date,sport,kind,priority,notes) VALUES(?,?,?,?,?,?)',g)
@@ -41,6 +41,7 @@ def events_between(start,end):
   if ex and ex['action']=='delete':continue
   events.append({'date':x['date'],'time':x['start_at'].strftime('%H:%M'),'icon':ico(x['event_type']),'title':x['title'],'meta':'récurrent','kind':'recurring','rule_id':x['rule_id'],'original_date':original,'uid':f"r{x['rule_id']}_{original}"})
  for x in query("SELECT * FROM sessions WHERE date(start_at)>=? AND date(start_at)<=? AND status!='cancelled'",(start.isoformat(),end.isoformat())):events.append({'date':date.fromisoformat(x['start_at'][:10]),'time':x['start_at'][11:16],'icon':ico(x['sport']),'title':x['title'],'meta':f"{x['duration_min'] or '?'} min",'kind':'session','id':x['id'],'sport':x['sport'],'duration_min':x['duration_min'],'intensity':x['intensity'],'objective':x['objective'],'start_at':x['start_at'],'uid':'s'+str(x['id'])})
+ for x in query("SELECT * FROM constraints WHERE event_date>=? AND event_date<=?",(start.isoformat(),end.isoformat())):events.append({'date':date.fromisoformat(x['event_date']),'icon':ico(x['event_type']),'title':x['title'],'meta':'contrainte','kind':'constraint','id':x['id'],'uid':'c'+str(x['id'])})
  for x in query("SELECT * FROM goals WHERE event_date>=? AND event_date<=?",(start.isoformat(),end.isoformat())):events.append({'date':date.fromisoformat(x['event_date']),'icon':'🏁','title':x['name'],'meta':'objectif','kind':'goal','id':x['id'],'uid':'g'+str(x['id'])})
  return events
 def session_detail(e):
@@ -74,9 +75,10 @@ elif nav=='📅 Planning':
  if selected:session_detail(selected)
 elif nav=='📈 Progression':stats_page()
 else:
- choice=st.selectbox('Espace',['🗺️ Plan prévisionnel','🏁 Objectifs','🧪 Tests physiques','🏅 Records','🎯 Road to LéMan','🤖 Coach','👤 Profil'])
+ choice=st.selectbox('Espace',['🗺️ Plan prévisionnel','🏁 Objectifs','🏉 Matchs rugby','🧪 Tests physiques','🏅 Records','🎯 Road to LéMan','🤖 Coach','👤 Profil'])
  if choice=='🗺️ Plan prévisionnel':roadmap_page()
  elif choice=='🏁 Objectifs':goals_page()
+ elif choice=='🏉 Matchs rugby':rugby_matches_page()
  elif choice=='🧪 Tests physiques':tests_page()
  elif choice=='🏅 Records':records_page()
  elif choice=='🎯 Road to LéMan':road_page()
