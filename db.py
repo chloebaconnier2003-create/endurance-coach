@@ -14,6 +14,12 @@ CREATE TABLE IF NOT EXISTS work_cycles (id INTEGER PRIMARY KEY AUTOINCREMENT,tit
 CREATE TABLE IF NOT EXISTS work_cycle_exceptions (id INTEGER PRIMARY KEY AUTOINCREMENT,cycle_id INTEGER NOT NULL,original_date TEXT NOT NULL,action TEXT NOT NULL,new_start_at TEXT,new_end_at TEXT,notes TEXT,UNIQUE(cycle_id,original_date));
 CREATE TABLE IF NOT EXISTS plan_log (id INTEGER PRIMARY KEY AUTOINCREMENT,created_at TEXT NOT NULL,goal_name TEXT,summary TEXT);
 CREATE TABLE IF NOT EXISTS coach_actions (id INTEGER PRIMARY KEY AUTOINCREMENT,created_at TEXT NOT NULL,session_id INTEGER,action TEXT NOT NULL,reason TEXT,old_start_at TEXT,new_start_at TEXT);
+CREATE TABLE IF NOT EXISTS physical_tests (id INTEGER PRIMARY KEY AUTOINCREMENT,test_date TEXT NOT NULL,sport TEXT NOT NULL,test_type TEXT NOT NULL,result_value REAL,result_unit TEXT,protocol TEXT,conditions TEXT,heart_rate REAL,pace TEXT,power REAL,rpe REAL,notes TEXT);
+CREATE TABLE IF NOT EXISTS training_seasons (id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,start_date TEXT NOT NULL,end_date TEXT NOT NULL,objective TEXT,priority TEXT,notes TEXT);
+CREATE TABLE IF NOT EXISTS training_blocks (id INTEGER PRIMARY KEY AUTOINCREMENT,season_id INTEGER,name TEXT NOT NULL,start_date TEXT NOT NULL,end_date TEXT NOT NULL,focus TEXT,objective TEXT,target_hours REAL,target_load REAL,status TEXT DEFAULT 'planned',notes TEXT);
+CREATE TABLE IF NOT EXISTS planned_metrics (id INTEGER PRIMARY KEY AUTOINCREMENT,session_id INTEGER,distance_km REAL,elevation_m REAL,target_load REAL,target_hr TEXT,target_pace TEXT,target_power TEXT);
+CREATE TABLE IF NOT EXISTS personal_records (id INTEGER PRIMARY KEY AUTOINCREMENT,sport TEXT NOT NULL,record_type TEXT NOT NULL,value REAL,unit TEXT,record_date TEXT,source TEXT,notes TEXT);
+CREATE TABLE IF NOT EXISTS performance_snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT,snapshot_date TEXT NOT NULL,metric TEXT NOT NULL,value REAL,unit TEXT,sport TEXT,notes TEXT);
 """
 def connect():
  c=sqlite3.connect(DB); c.row_factory=sqlite3.Row; return c
@@ -28,6 +34,9 @@ def migrate(c):
  for n,d in [('cycle_id','INTEGER'),('original_date','TEXT'),('action',"TEXT DEFAULT 'delete'"),('new_start_at','TEXT'),('new_end_at','TEXT'),('notes','TEXT')]:_add(c,'work_cycle_exceptions',n,d)
  for n,d in [('title',"TEXT NOT NULL DEFAULT 'Récurrence'"),('event_type',"TEXT NOT NULL DEFAULT 'other'"),('weekday','INTEGER DEFAULT 0'),('start_time',"TEXT DEFAULT '19:00'"),('duration_min','INTEGER DEFAULT 90'),('intensity',"TEXT DEFAULT 'moderate'"),('start_date',"TEXT DEFAULT '2026-01-01'"),('end_date','TEXT'),('active','INTEGER DEFAULT 1'),('notes','TEXT')]:_add(c,'recurring_rules',n,d)
  for n,d in [('rule_id','INTEGER'),('original_date','TEXT'),('action',"TEXT DEFAULT 'delete'"),('new_start_at','TEXT'),('new_end_at','TEXT')]:_add(c,'recurring_exceptions',n,d)
+ for n,d in [('distance_km','REAL'),('elevation_m','REAL'),('target_load','REAL'),('target_hr','TEXT'),('target_pace','TEXT'),('target_power','TEXT')]:_add(c,'planned_metrics',n,d)
+ for n,d in [('actual_duration_min','INTEGER'),('actual_distance_km','REAL'),('actual_elevation_m','REAL'),('actual_avg_hr','REAL'),('actual_max_hr','REAL'),('actual_rpe','REAL'),('actual_pain','REAL'),('actual_feeling','TEXT'),('actual_notes','TEXT'),('completed_at','TEXT')]:_add(c,'sessions',n,d)
+ for n,d in [('distance_km','REAL'),('elevation_m','REAL'),('goal_time','TEXT'),('qualitative_goal','TEXT'),('result','TEXT')]:_add(c,'goals',n,d)
  c.commit()
 def init():
  c=connect(); migrate(c); c.close()
