@@ -4,13 +4,36 @@ from datetime import date,timedelta
 from db import query,execute
 from performance_engine import load_summary,sport_summary,readiness_trend
 from v7_engine import week_bounds,week_summary,roadmap,test_catalog,suggested_tests
+from weekly_generator import generate_week,generate_until
 
 def week_page():
- st.header('Ma semaine');start,end=week_bounds();sessions=query('SELECT * FROM sessions WHERE date(start_at)>=? AND date(start_at)<=?',(start.isoformat(),end.isoformat()));acts=query('SELECT * FROM activities WHERE date(start_at)>=? AND date(start_at)<=?',(start.isoformat(),end.isoformat()));x=week_summary(sessions,acts);st.subheader(f'Semaine {date.today().isocalendar().week} · {start.strftime("%d/%m")} → {end.strftime("%d/%m")}');st.progress(min(1,x['minute_pct']/100));st.markdown(f"## {x['minute_pct']} % du volume prévu réalisé");a,b,c=st.columns(3);a.metric('Séances',f"{x['done_sessions']}/{x['planned_sessions']}");b.metric('Heures prévues',round(x['planned_minutes']/60,1));c.metric('Heures réalisées',round((x['done_minutes']+x['activity_minutes'])/60,1));st.caption(f"Distance prévue {x['planned_km']} km · réalisée {x['done_km']} km · charge activités {x['load']}");st.subheader('Timeline')
+ st.header('Ma semaine');start,end=week_bounds();sessions=query('SELECT * FROM sessions WHERE date(start_at)>=? AND date(start_at)<=?',(start.isoformat(),end.isoformat()));acts=query('SELECT * FROM activities WHERE date(start_at)>=? AND date(start_at)<=?',(start.isoformat(),end.isoformat()));x=week_summary(sessions,acts);st.subheader(f'Semaine {date.today().isocalendar().week} · {start.strftime("%d/%m")} → {end.strftime("%d/%m")}');st.progress(min(1,x['minute_pct']/100));st.markdown(f"## {x['minute_pct']} % du volume prévu réalisé");a,b,c=st.columns(3);a.metric('Séances',f"{x['done_sessions']}/{x['planned_sessions']}");b.metric('Heures prévues',round(x['planned_minutes']/60,1));c.metric('Heures réalisées',round((x['done_minutes']+x['activity_minutes'])/60,1));st.caption(f"Distance prévue {x['planned_km']} km · réalisée {x['done_km']} km · charge activités {x['load']}")
+ with st.expander('⚙️ Générateur hebdomadaire'):
+  st.caption('Le moteur place les séances autour des gardes et activités fixes, espace les charges intenses et considère le rugby comme une séance dure.')
+  c1,c2=st.columns(2)
+  if c1.button('Générer cette semaine',use_container_width=True):
+   r=generate_week(start);st.success(r['message']);st.rerun()
+  if c2.button('Recalculer cette semaine',use_container_width=True):
+   r=generate_week(start,replace=True);st.success(r['message']);st.rerun()
+  st.warning('La génération complète crée le plan jusqu’au LéMan. À utiliser après avoir renseigné les contraintes connues.')
+  if st.button('Générer toute la préparation → LéMan',use_container_width=True):
+   r=generate_until();st.success(f"{r['created']} séances créées sur {r['weeks']} semaines");st.rerun()
+ st.subheader('Timeline')
  for i in range(7):
   d=start+timedelta(days=i);st.markdown(f"**{['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'][i]} {d.strftime('%d/%m')}**");day=[s for s in sessions if s['start_at'][:10]==d.isoformat()]
   if not day:st.caption('○ Pas de séance planifiée')
   for s in day:st.write(('✓' if s.get('status')=='completed' else '○')+f" {s['title']} · {s.get('duration_min') or '?'} min")
+
+def rugby_matches_page():
+ st.header('Matchs de rugby');st.caption('Un match est traité comme une contrainte fixe et une charge intense. Le générateur évite donc de placer une autre séance dure le même jour et protège les séances clés autour du match.')
+ with st.form('rugby_match_add'):
+  d=st.date_input('Date du match');start=st.time_input('Heure de début');dur=st.number_input('Durée / bloc mobilisé (min)',60,360,120,15);title=st.text_input('Adversaire / titre','Match de rugby');notes=st.text_area('Notes')
+  if st.form_submit_button('Ajouter le match',use_container_width=True):
+   execute('INSERT INTO constraints(event_date,event_type,title,duration_min,intensity,fixed,notes) VALUES(?,?,?,?,?,?,?)',(d.isoformat(),'rugby_match',title,dur,'high',1,f"Début {start.strftime('%H:%M')} · {notes}"));st.success('Match ajouté. Les prochaines générations hebdomadaires en tiendront compte.');st.rerun()
+ rows=query("SELECT * FROM constraints WHERE event_type='rugby_match' ORDER BY event_date")
+ for r in rows:
+  c1,c2=st.columns([4,1]);c1.write(f"🏉 **{r['event_date'][8:10]}-{r['event_date'][5:7]}** · {r['title']} · {r['duration_min']} min")
+  if c2.button('Suppr.',key=f"rm{r['id']}"):execute('DELETE FROM constraints WHERE id=?',(r['id'],));st.rerun()
 
 def roadmap_page_legacy():
  st.header('Plan prévisionnel · Porto-Vecchio → LéMan');blocks=roadmap();today=date.today().isoformat()
@@ -55,5 +78,4 @@ def stats_page():
  trend=readiness_trend(query('SELECT * FROM checkins ORDER BY created_at DESC LIMIT 30'))
  if trend:st.line_chart(pd.DataFrame(trend),x='date',y='score')
 
-# Safe override: Season Map is isolated from the stable training engine.
 from season_map import roadmap_page,goals_page
