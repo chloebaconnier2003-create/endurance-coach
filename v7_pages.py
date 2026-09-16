@@ -12,21 +12,12 @@ def week_page():
   if not day:st.caption('○ Pas de séance planifiée')
   for s in day:st.write(('✓' if s.get('status')=='completed' else '○')+f" {s['title']} · {s.get('duration_min') or '?'} min")
 
-def roadmap_page():
- st.header('Plan prévisionnel · Porto-Vecchio → LéMan');st.caption('Les dates des défis sans inscription confirmée sont des fenêtres stratégiques : elles sont volontairement modifiables. Les gardes, rugby, danse, fatigue et douleur doivent ensuite adapter la semaine réelle.')
- blocks=roadmap();today=date.today().isoformat()
- st.markdown('### Vue macrocycle')
+def roadmap_page_legacy():
+ st.header('Plan prévisionnel · Porto-Vecchio → LéMan');blocks=roadmap();today=date.today().isoformat()
  for b in blocks:
-  active=b['start']<=today<=b['end'];st.write(('🟢 ' if active else '○ ')+f"**{b['name']}** · {b['start']} → {b['end']} · {b['objective']}")
- st.divider();st.markdown('## Macrocycles → microcycles → séances')
- for b in blocks:
-  active=b['start']<=today<=b['end'];label=('🟢 EN COURS · ' if active else '')+b['name']
-  with st.expander(label,expanded=active):
-   st.write(f"**Période :** {b['start']} → {b['end']}");st.write(f"**Objectif :** {b['objective']}");st.write(f"**Focus :** {b['focus']}");st.info('Structure séances · '+b['sessions']);st.markdown('#### Microcycles')
-   for w in b['weeks']:st.write('• '+w)
-   st.markdown('#### Règles d’adaptation');st.caption('Garde 24 h/nuit difficile → séance légère ou déplacement. Rugby = séance intense multisport. Danse = charge complémentaire. Formation/SST = disponibilité seulement. Une sortie défi remplace la séance longue correspondante ; elle ne s’ajoute jamais au-dessus du volume prévu.')
+  active=b['start']<=today<=b['end'];st.write(('🟢 ' if active else '○ ')+f"**{b['name']}** · {b['start']} → {b['end']}")
 
-def goals_page():
+def goals_page_legacy():
  st.header('Objectifs');goals=query("SELECT * FROM goals WHERE COALESCE(event_date,'')!='' ORDER BY event_date")
  for g in goals:
   try:days=(date.fromisoformat(g['event_date'])-date.today()).days
@@ -63,3 +54,6 @@ def stats_page():
  if sports:st.bar_chart(pd.DataFrame([{'sport':k,'heures':v['minutes']/60} for k,v in sports.items()]),x='sport',y='heures')
  trend=readiness_trend(query('SELECT * FROM checkins ORDER BY created_at DESC LIMIT 30'))
  if trend:st.line_chart(pd.DataFrame(trend),x='date',y='score')
+
+# Safe override: Season Map is isolated from the stable training engine.
+from season_map import roadmap_page,goals_page
