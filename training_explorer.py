@@ -40,8 +40,8 @@ def training_explorer():
         st.success(f'{len(actual)} séances enregistrées · calendrier réel')
         sessions=actual
     else:
-        st.info('Aucune séance enregistrée pour cette semaine. Aperçu des séances proposées ci-dessous : leur jour exact dépend des gardes et des contraintes.')
-        sessions=[dict(sport=sp,title=ti,duration_min=du,intensity=ins,objective=obj,start_at=None,status='preview') for sp,ti,du,ins,obj in prescription(phase,w)]
+        st.info('Aucune séance enregistrée : aperçu du placement selon les gardes et contraintes connues. Les horaires restent indicatifs.')
+        sessions=generate_week(selected,preview=True)['sessions']
         if selected>=date.today():
             if st.button('Planifier cette semaine dans le calendrier',key='explorer_generate'):
                 r=generate_week(selected)
@@ -61,11 +61,11 @@ def training_explorer():
                 with st.expander(f"{ICONS.get(s['sport'],'📌')} {s['title']} · {s['duration_min']} min · {s['sport']} · {s.get('status','planned')}"):
                     _details(s)
         elif not actual:
-            st.caption('Jour à déterminer après génération selon les gardes, le rugby et la récupération.')
+            st.caption('Repos ou indisponibilité prévisionnelle')
         else:
             st.caption('Repos / aucune séance enregistrée')
     if not actual:
-        st.divider();st.subheader('Séances de la semaine, par sport · non placées')
+        st.divider();st.subheader('Séances de la semaine, par sport · aperçu')
         for sport in ('swimming','cycling','running','trail','strength'):
             group=[s for s in sessions if s['sport']==sport]
             if not group:continue
