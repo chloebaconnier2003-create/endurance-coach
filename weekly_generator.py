@@ -94,7 +94,11 @@ def generate_week(start,replace=False):
  start=start-timedelta(days=start.weekday());end=start+timedelta(days=6);phase,_=phase_for(start);w=_week_index(start,phase);flags=_day_flags(start,end)
  if replace:execute("DELETE FROM sessions WHERE date(start_at)>=? AND date(start_at)<=? AND source='weekly_generator' AND status='planned' AND date(start_at)>=?",(start.isoformat(),end.isoformat(),date.today().isoformat()))
  elif query("SELECT id FROM sessions WHERE date(start_at)>=? AND date(start_at)<=? AND source='weekly_generator' LIMIT 1",(start.isoformat(),end.isoformat())):return {'created':0,'phase':phase,'message':'Semaine déjà générée'}
- plan,state,changes=adapt_prescription(prescription(phase,w),start);created=[];last_hard=None;used={}
+ plan=prescription(phase,w)
+ if phase in ('base_run','marathon','half','full') and w%4==3:plan=[(sp,ti,max(20,round(du*.75/5)*5),'easy',ob+' · semaine allégée') for sp,ti,du,ins,ob in plan]
+ if start<=date.today()+timedelta(days=14):plan,state,changes=adapt_prescription(plan,start)
+ else:state={'level':'provisoire','reasons':['Réévaluer avant cette semaine']};changes=[]
+ created=[];last_hard=None;used={}
  existing=query("SELECT start_at,intensity FROM sessions WHERE date(start_at)>=? AND date(start_at)<=? AND status!='cancelled'",(start.isoformat(),end.isoformat()))
  for old in existing:
   try:
@@ -106,6 +110,7 @@ def generate_week(start,replace=False):
   for i in range(7):
    d=start+timedelta(days=i)
    if d<date.today() or used.get(d,0)>=2 or flags[d]['blocked']:continue
+   if intensity!='easy' and (flags[d]['hard'] or any(flags.get(d+timedelta(days=j),{}).get('rugby') for j in (-1,1))):continue
    sc=_score_day(d,flags,intensity,sport,last_hard)
    if dur>120 and flags[d]['blocked']:sc-=100
    candidates.append((sc,d))
