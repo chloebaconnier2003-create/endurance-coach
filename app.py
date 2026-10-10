@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime,date,time,timedelta
 from db import init,query,execute
 from confirmed_events import sync_confirmed_events
+from training_explorer import training_explorer
 from profile import ATHLETE,GOALS
 from engine import decision
 from calendar_engine import recurring_instances,all_shifts
@@ -54,7 +55,7 @@ def session_detail(e):
    if st.button('✓ Séance réalisée',use_container_width=True):execute("UPDATE sessions SET status='completed',actual_duration_min=?,actual_distance_km=?,actual_elevation_m=?,actual_rpe=?,actual_pain=?,actual_feeling=?,completed_at=? WHERE id=?",(dur,dist,elev,rpe,pain,feel,datetime.now().isoformat(),e['id']));execute('INSERT INTO activities(start_at,sport,title,duration_min,distance_km,elevation_m,rpe,pain,notes) VALUES(?,?,?,?,?,?,?,?,?)',(datetime.now().isoformat(),e['sport'],e['title'],dur,dist,elev,rpe,pain,feel));st.rerun()
 g=next_goal();days=(date.fromisoformat(g['event_date'])-date.today()).days if g else None
 st.markdown(f"<div class='hero'><small>ENDURANCE COACH · V7</small><h2>{g['name'] if g else 'Road to Full Distance'}</h2><b>{'J-'+str(days) if days is not None else ''}</b><br><small>Planifier · réaliser · mesurer · adapter</small></div>",unsafe_allow_html=True)
-nav=st.segmented_control('Navigation',['🏠 Aujourd’hui','📊 Semaine','📅 Planning','📈 Progression','••• Plus'],default='🏠 Aujourd’hui',label_visibility='collapsed') or '🏠 Aujourd’hui'
+nav=st.segmented_control('Navigation',['🏠 Aujourd’hui','📊 Semaine','📖 Séances','📅 Planning','📈 Progression','••• Plus'],default='🏠 Aujourd’hui',label_visibility='collapsed') or '🏠 Aujourd’hui'
 if nav=='🏠 Aujourd’hui':
  ci=checkin();ps=today_session();dec,score,status,why,action=decision(ci,ps,last_shift(),rugby_recent());loads=load_summary(query('SELECT * FROM activities WHERE start_at>=?',((date.today()-timedelta(days=28)).isoformat(),)));a,b,c=st.columns(3);a.metric('Forme',score);b.metric('Charge 7 j',loads['load7']);c.metric('Objectif',f'J-{days}' if days is not None else '—');st.markdown(f"### {status.replace('_',' ')} · {dec.replace('_',' ').title()}");st.write(why)
  if ps:
@@ -67,6 +68,7 @@ if nav=='🏠 Aujourd’hui':
     sleep=st.number_input('Sommeil',0.,14.,7.,.5);fatigue=st.slider('Fatigue',1,5,3);quality=st.slider('Qualité',1,5,3);motivation=st.slider('Motivation',1,5,3);soreness=st.slider('Courbatures',1,5,3);stress=st.slider('Stress',1,5,3);pain=st.slider('Douleur',0,10,0)
     if st.form_submit_button('Enregistrer'):execute('INSERT INTO checkins(created_at,sleep_hours,sleep_quality,fatigue,motivation,soreness,stress,pain_score) VALUES(?,?,?,?,?,?,?,?)',(datetime.now().isoformat(),sleep,quality,fatigue,motivation,soreness,stress,pain));st.rerun()
 elif nav=='📊 Semaine':week_page()
+elif nav=='📖 Séances':training_explorer()
 elif nav=='📅 Planning':
  st.header('Planning');view=st.segmented_control('Vue',['Jour / Mois','Semaine'],default='Jour / Mois')
  if view=='Jour / Mois':
