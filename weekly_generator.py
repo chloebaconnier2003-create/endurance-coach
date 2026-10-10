@@ -44,6 +44,9 @@ def _day_flags(start,end):
    flags[d]['hard']=True;flags[d]['rugby']=True
   if k=='rugby_match':flags[d]['hard']=True
   if k=='race':flags[d]['blocked']=True;flags[d]['hard']=True
+ # Protect the day following a race as a minimum recovery buffer.
+ for a,b,k in fixed:
+  if k=='race' and a.date()+timedelta(days=1) in flags:flags[a.date()+timedelta(days=1)]['blocked']=True
  # mandatory post-shift protection: 24 h after 24 h; 12 h after 12 h.
  for a,b,k in fixed:
   if k=='24h':
