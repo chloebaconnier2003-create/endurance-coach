@@ -99,7 +99,7 @@ def generate_week(start,replace=False,preview=False):
  elif not preview and query("SELECT id FROM sessions WHERE date(start_at)>=? AND date(start_at)<=? AND source='weekly_generator' LIMIT 1",(start.isoformat(),end.isoformat())):return {'created':0,'phase':phase,'message':'Semaine déjà générée'}
  plan=prescription(phase,w)
  if phase in ('base_run','marathon','half','full') and w%4==3:plan=[(sp,ti,max(20,round(du*.75/5)*5),'easy',ob+' · semaine allégée') for sp,ti,du,ins,ob in plan]
- if start<=date.today()+timedelta(days=14):plan,state,changes=adapt_prescription(plan,start)
+ if start<=date.today()+timedelta(days=14):plan,state,changes=adapt_prescription(plan,min(start,date.today()))
  else:state={'level':'provisoire','reasons':['Réévaluer avant cette semaine']};changes=[]
  created=[];last_hard=None;used={};scheduled=[]
  existing=query("SELECT start_at,intensity FROM sessions WHERE date(start_at)>=? AND date(start_at)<=? AND status!='cancelled'",(start.isoformat(),end.isoformat()))
@@ -120,6 +120,7 @@ def generate_week(start,replace=False,preview=False):
   if not candidates:continue
   sc,d=max(candidates,key=lambda x:x[0])
   if sc<=-90:continue
+  if 'optionnel' in title.lower() and (len(candidates)<4 or sc<0):continue
   # default training slot; later UI can allow drag/drop. Two-a-days separated.
   hour=10 if used.get(d,0)==0 else 17
   start_at=datetime.combine(d,time(hour,0)).isoformat(timespec='minutes')
