@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime,date,time,timedelta
 from db import init,query,execute
+from confirmed_events import sync_confirmed_events
 from profile import ATHLETE,GOALS
 from engine import decision
 from calendar_engine import recurring_instances,all_shifts
@@ -10,7 +11,7 @@ from workout_engine import detailed_workout
 from performance_engine import load_summary
 from coach_engine import coach_brief,adaptation_options
 from v7_pages import week_page,roadmap_page,goals_page,tests_page,records_page,road_page,stats_page,rugby_matches_page
-st.set_page_config(page_title='Endurance Coach V7',page_icon='⚡',layout='wide',initial_sidebar_state='collapsed');init()
+st.set_page_config(page_title='Endurance Coach V7',page_icon='⚡',layout='wide',initial_sidebar_state='collapsed');init();sync_confirmed_events()
 if not query('SELECT id FROM goals LIMIT 1'):
  for g in GOALS:execute('INSERT INTO goals(name,event_date,sport,kind,priority,notes) VALUES(?,?,?,?,?,?)',g)
 st.markdown('''<style>.block-container{max-width:1100px;padding-top:.65rem;padding-bottom:6rem}.hero{padding:1rem;border-radius:20px;background:linear-gradient(135deg,#14171c,#29323d);color:white}.card{padding:1rem;border:1px solid rgba(128,128,128,.22);border-radius:18px;margin:.5rem 0}.stButton button{min-height:46px;border-radius:14px;font-weight:650;white-space:normal}@media(max-width:700px){.block-container{padding-left:.6rem!important;padding-right:.6rem!important}.hero h2{font-size:1.3rem!important}div[data-testid="stHorizontalBlock"]{gap:.3rem}.stButton button{min-height:50px}}</style>''',unsafe_allow_html=True)
