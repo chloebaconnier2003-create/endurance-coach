@@ -11,7 +11,7 @@ PHASES=[
  ('2027-03-01','2027-04-25','marathon',4,4),('2027-04-26','2027-05-23','ventoux',2,3),
  ('2027-05-24','2027-06-27','half',3,3),('2027-06-28','2027-07-25','cinglée',2,3),
  ('2027-07-26','2027-08-15','colombier',2,3),('2027-08-16','2027-09-05','full',3,3),
- ('2027-09-06','2027-09-30','taper',3,3)]
+ ('2027-09-06','2027-09-12','taper',3,3)]
 
 def phase_for(d):
  s=d.isoformat()
@@ -43,6 +43,7 @@ def _day_flags(start,end):
   if k in ('rugby','rugby_training','rugby_match'):
    flags[d]['hard']=True;flags[d]['rugby']=True
   if k=='rugby_match':flags[d]['hard']=True
+  if k=='race':flags[d]['blocked']=True;flags[d]['hard']=True
  # mandatory post-shift protection: 24 h after 24 h; 12 h after 12 h.
  for a,b,k in fixed:
   if k=='24h':
@@ -86,6 +87,7 @@ def _score_day(d,flags,intensity,sport,last_hard):
  if sport in ('cycling','trail') and d.weekday()>=5:score+=12
  if 'running'==sport and d.weekday() in (1,3,6):score+=6
  if f['rugby']:score-=80 if intensity!='easy' else 30
+ if any(flags.get(d+timedelta(days=j),{}).get('rugby') for j in (-1,1)) and intensity!='easy':score-=50
  return score
 
 def generate_week(start,replace=False):
@@ -118,7 +120,7 @@ def generate_week(start,replace=False):
   if intensity!='easy':last_hard=d;flags[d]['hard']=True
  return {'created':len(created),'phase':phase,'readiness':state,'changes':changes,'message':f'{len(created)} séances générées · adaptation {state["level"]}'}
 
-def generate_until(end_date=date(2027,9,30),replace=False):
+def generate_until(end_date=date(2027,9,12),replace=False):
  d=date.today()-timedelta(days=date.today().weekday());total=0;weeks=0
  while d<=end_date:
   r=generate_week(d,replace=replace);total+=r['created'];weeks+=1;d+=timedelta(days=7)
