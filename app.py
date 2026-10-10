@@ -48,7 +48,7 @@ def events_between(start,end):
 def session_detail(e):
  st.subheader(f"{e.get('icon','')} {e['title']}");st.caption(f"{e['date'].strftime('%d/%m/%Y')} · {e.get('time','')}")
  if e['kind']=='session':
-  w=detailed_workout(e.get('sport'),e.get('intensity'),e.get('duration_min'),e.get('objective'));st.write('**Échauffement** — '+w['warmup']);st.write('**Bloc principal** — '+w['main']);st.write('**Retour au calme** — '+w['cooldown']);st.write('**Cible** — '+w['intensity_target'])
+  w=detailed_workout(e.get('sport'),e.get('intensity'),e.get('duration_min'),e.get('objective'),e.get('title'));st.write('**Échauffement** — '+w['warmup']);st.write('**Bloc principal** — '+w['main']);st.write('**Retour au calme** — '+w['cooldown']);st.write('**Cible** — '+w['intensity_target'])
   with st.expander('Marquer réalisée / modifier'):
    dur=st.number_input('Durée réelle',1,1000,int(e.get('duration_min') or 60));dist=st.number_input('Distance réelle km',0.,500.,0.,.1);elev=st.number_input('D+ réel',0,10000,0);rpe=st.slider('RPE',1,10,4);pain=st.slider('Douleur',0,10,0);feel=st.text_input('Ressenti')
    if st.button('✓ Séance réalisée',use_container_width=True):execute("UPDATE sessions SET status='completed',actual_duration_min=?,actual_distance_km=?,actual_elevation_m=?,actual_rpe=?,actual_pain=?,actual_feeling=?,completed_at=? WHERE id=?",(dur,dist,elev,rpe,pain,feel,datetime.now().isoformat(),e['id']));execute('INSERT INTO activities(start_at,sport,title,duration_min,distance_km,elevation_m,rpe,pain,notes) VALUES(?,?,?,?,?,?,?,?,?)',(datetime.now().isoformat(),e['sport'],e['title'],dur,dist,elev,rpe,pain,feel));st.rerun()
@@ -58,7 +58,7 @@ nav=st.segmented_control('Navigation',['🏠 Aujourd’hui','📊 Semaine','📅
 if nav=='🏠 Aujourd’hui':
  ci=checkin();ps=today_session();dec,score,status,why,action=decision(ci,ps,last_shift(),rugby_recent());loads=load_summary(query('SELECT * FROM activities WHERE start_at>=?',((date.today()-timedelta(days=28)).isoformat(),)));a,b,c=st.columns(3);a.metric('Forme',score);b.metric('Charge 7 j',loads['load7']);c.metric('Objectif',f'J-{days}' if days is not None else '—');st.markdown(f"### {status.replace('_',' ')} · {dec.replace('_',' ').title()}");st.write(why)
  if ps:
-  w=detailed_workout(ps['sport'],ps['intensity'],ps['duration_min'],ps['objective']);st.markdown(f"<div class='card'><small>SÉANCE DU JOUR</small><h2>{ico(ps['sport'])} {ps['title']}</h2><b>{ps['duration_min']} min · {ps['intensity']}</b><p>{w['summary']}</p></div>",unsafe_allow_html=True)
+  w=detailed_workout(ps['sport'],ps['intensity'],ps['duration_min'],ps['objective'],ps['title']);st.markdown(f"<div class='card'><small>SÉANCE DU JOUR</small><h2>{ico(ps['sport'])} {ps['title']}</h2><b>{ps['duration_min']} min · {ps['intensity']}</b><p>{w['summary']}</p></div>",unsafe_allow_html=True)
   e={'kind':'session','id':ps['id'],'sport':ps['sport'],'title':ps['title'],'date':date.today(),'time':ps['start_at'][11:16],'duration_min':ps['duration_min'],'intensity':ps['intensity'],'objective':ps['objective'],'icon':ico(ps['sport'])};session_detail(e)
  for msg in coach_brief(score,status,ps,g,last_shift(),loads):st.write('• '+msg)
  if not ci:
