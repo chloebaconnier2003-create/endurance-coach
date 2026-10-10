@@ -59,18 +59,22 @@ def _week_index(d,phase):
 
 def prescription(phase,w):
  # durations are targets; generator adapts placement, not physiology after the fact.
+ if phase=='semi':
+  # 12 Oct 2026: first indoor Z2 exposure during semi-marathon taper.
+  if w>=3:return [('cycling','Home-trainer endurance Z2',40,'easy','Entretien aérobie sans fatigue avant Porto-Vecchio'),('running','Footing très facile',35,'easy','Fraîcheur pré-course'),('running','Activation légère',25,'easy','Garder la fréquence sans fatigue')]
+  return [('running','Footing facile',45,'easy','Base CAP'),('running','Tempo semi contrôlé',50,'moderate','Spécifique semi'),('running','Sortie longue facile',75,'easy','Endurance'),('cycling','Home-trainer endurance Z2',45,'easy','Endurance vélo sans impact')]
  if phase=='reset':
-  long=min(80,60+5*w);return [('running','Footing facile',45,'easy','Endurance fondamentale'),('running','Footing + lignes droites',45,'easy','Économie de course'),('running','Sortie longue facile',long,'easy','Tolérance mécanique'),('swimming','Natation technique',45,'easy','Technique'),('swimming','Natation endurance',50,'easy','Aérobie sans impact'),('cycling','Vélo Z2',75,'easy','Base aérobie'),('strength','Renforcement',40,'moderate','Force générale')]
+  long=min(80,60+5*w);return [('running','Footing facile',45,'easy','Endurance fondamentale'),('running','Footing + lignes droites',45,'easy','Économie de course'),('running','Sortie longue facile',long,'easy','Tolérance mécanique'),('swimming','Natation technique',45,'easy','Technique'),('swimming','Natation endurance',50,'easy','Aérobie sans impact'),('cycling','Home-trainer endurance Z2',60,'easy','Base aérobie'),('cycling','Home-trainer endurance facile optionnel',40,'easy','Deuxième exposition selon récupération'),('strength','Renforcement',40,'moderate','Force générale')]
  if phase=='base_run':
-  long=min(120,80+5*w);q='Tempo contrôlé 3×8 min' if w<4 else 'Allure marathon 3×10 min';return [('running','Footing facile',45,'easy','Endurance fondamentale'),('running',q,60,'moderate','Seuil bas / économie'),('running','Footing facile + strides',45,'easy','Fréquence CAP'),('running','Sortie longue',long,'easy','Durabilité CAP'),('swimming','Natation technique',50,'easy','Technique'),('swimming','Natation endurance',55,'easy','Aérobie'),('cycling','Vélo Z2',90,'easy','Entretien vélo'),('strength','Renforcement coureur',40,'moderate','Force')]
+  long=min(120,80+5*w);q='Tempo contrôlé 3×8 min' if w<4 else 'Allure marathon 3×10 min';return [('running','Footing facile',45,'easy','Endurance fondamentale'),('running',q,60,'moderate','Seuil bas / économie'),('running','Footing facile + strides',45,'easy','Fréquence CAP'),('running','Sortie longue',long,'easy','Durabilité CAP'),('swimming','Natation technique',50,'easy','Technique'),('swimming','Natation endurance',55,'easy','Aérobie'),('cycling','Home-trainer endurance Z2',65,'easy','Entretien vélo'),('cycling','Home-trainer endurance facile optionnel',40,'easy','Deuxième exposition selon récupération'),('strength','Renforcement coureur',40,'moderate','Force')]
  if phase=='marathon':
-  longs=[100,115,130,95,145,160,120,45];long=longs[min(w,len(longs)-1)];q=['3×10 min allure marathon','2×15 min allure marathon','3×12 min allure marathon','6×3 min tempo','2×20 min allure marathon','3×15 min allure marathon','2×12 min allure marathon','Activation marathon'][min(w,7)];return [('running','Footing récupération',40,'easy','Récupération active'),('running',q,60,'moderate','Spécifique marathon'),('running','Footing facile + strides',45,'easy','Économie'),('running','Sortie longue',long,'easy','Durabilité / nutrition'),('swimming','Natation récupération',45,'easy','Aérobie sans impact'),('cycling','Vélo facile',60,'easy','Entretien aérobie'),('strength','Renforcement entretien',30,'moderate','Force')]
+  longs=[100,115,130,95,145,160,120,45];long=longs[min(w,len(longs)-1)];q=['3×10 min allure marathon','2×15 min allure marathon','3×12 min allure marathon','6×3 min tempo','2×20 min allure marathon','3×15 min allure marathon','2×12 min allure marathon','Activation marathon'][min(w,7)];return [('running','Footing récupération',40,'easy','Récupération active'),('running',q,60,'moderate','Spécifique marathon'),('running','Footing facile + strides',45,'easy','Économie'),('running','Sortie longue',long,'easy','Durabilité / nutrition'),('swimming','Natation récupération',45,'easy','Aérobie sans impact'),('cycling','Home-trainer endurance Z2',50,'easy','Entretien aérobie'),('strength','Renforcement entretien',30,'moderate','Force')]
  if phase in ('ventoux','cinglée','colombier'):
   long={'ventoux':180,'cinglée':300,'colombier':300}[phase];return [('cycling','Vélo endurance montagne',long,'easy','Endurance / D+ / nutrition'),('cycling','Vélo force-endurance',90,'moderate','Montées contrôlées'),('running','Footing facile',45,'easy','Maintien CAP'),('running','Course facile + strides',45,'easy','Économie'),('swimming','Natation technique',50,'easy','Technique/récupération'),('swimming','Natation endurance',55,'easy','Aérobie'),('strength','Renforcement entretien',30,'moderate','Force')]
  if phase in ('half','full'):
   long=210 if phase=='half' else 300;runlong=85 if phase=='half' else 100;return [('cycling','Vélo long Z2 + nutrition',long,'easy','Durabilité'),('running','Brick facile',30 if phase=='half' else 45,'easy','Transition vélo-course'),('running','Sortie longue facile',runlong,'easy','Durabilité CAP'),('running','Tempo contrôlé',55,'moderate','Seuil bas'),('swimming','Natation technique',50,'easy','Technique'),('swimming','Natation endurance/CSS',65,'moderate','Endurance spécifique'),('cycling','Vélo endurance',90,'easy','Volume'),('strength','Renforcement entretien',30,'moderate','Force')]
  if phase=='taper':return [('swimming','Natation technique',45,'easy','Fraîcheur'),('cycling','Vélo Z2 + rappels',90,'moderate','Spécificité'),('running','Footing + rappels',45,'moderate','Spécificité'),('running','Course facile',35,'easy','Fréquence')]
- if phase=='trail':return [('trail','Trail vallonné facile',60,'easy','Technique'),('trail','Côtes contrôlées',55,'moderate','Force-endurance'),('trail','Sortie trail longue',105,'easy','Durabilité'),('strength','Renforcement trail',40,'moderate','Excentrique'),('swimming','Natation récupération',45,'easy','Récupération')]
+ if phase=='trail':return [('cycling','Home-trainer endurance Z2',50,'easy','Entretien vélo après semi'),('cycling','Home-trainer facile optionnel',35,'easy','Deuxième exposition si récupérée'),('trail','Trail vallonné facile',60,'easy','Technique'),('trail','Côtes contrôlées',55,'moderate','Force-endurance'),('trail','Sortie trail longue',105,'easy','Durabilité'),('strength','Renforcement trail',40,'moderate','Excentrique'),('swimming','Natation récupération',45,'easy','Récupération')]
  return [('running','Footing facile',45,'easy','Endurance'),('running','Séance spécifique',60,'moderate','Spécifique'),('running','Sortie longue',100,'easy','Durabilité'),('swimming','Natation récupération',45,'easy','Technique'),('strength','Renforcement',35,'moderate','Force')]
 
 def _score_day(d,flags,intensity,sport,last_hard):
@@ -81,19 +85,25 @@ def _score_day(d,flags,intensity,sport,last_hard):
  # prefer quality on rested midweek days, long sessions on weekends when possible
  if sport in ('cycling','trail') and d.weekday()>=5:score+=12
  if 'running'==sport and d.weekday() in (1,3,6):score+=6
- if f['rugby']:score-=30
+ if f['rugby']:score-=80 if intensity!='easy' else 30
  return score
 
 def generate_week(start,replace=False):
  start=start-timedelta(days=start.weekday());end=start+timedelta(days=6);phase,_=phase_for(start);w=_week_index(start,phase);flags=_day_flags(start,end)
- if replace:execute("DELETE FROM sessions WHERE date(start_at)>=? AND date(start_at)<=? AND source='weekly_generator' AND status='planned'",(start.isoformat(),end.isoformat()))
+ if replace:execute("DELETE FROM sessions WHERE date(start_at)>=? AND date(start_at)<=? AND source='weekly_generator' AND status='planned' AND date(start_at)>=?",(start.isoformat(),end.isoformat(),date.today().isoformat()))
  elif query("SELECT id FROM sessions WHERE date(start_at)>=? AND date(start_at)<=? AND source='weekly_generator' LIMIT 1",(start.isoformat(),end.isoformat())):return {'created':0,'phase':phase,'message':'Semaine déjà générée'}
  plan,state,changes=adapt_prescription(prescription(phase,w),start);created=[];last_hard=None;used={}
+ existing=query("SELECT start_at,intensity FROM sessions WHERE date(start_at)>=? AND date(start_at)<=? AND status!='cancelled'",(start.isoformat(),end.isoformat()))
+ for old in existing:
+  try:
+   day=date.fromisoformat(old['start_at'][:10]);used[day]=used.get(day,0)+1
+   if old.get('intensity') not in ('easy',None):flags[day]['hard']=True
+  except (ValueError,KeyError):pass
  for sport,title,dur,intensity,obj in sorted(plan,key=lambda x:(x[3]=='easy',-x[2])):
   candidates=[]
   for i in range(7):
    d=start+timedelta(days=i)
-   if used.get(d,0)>=2:continue
+   if d<date.today() or used.get(d,0)>=2 or flags[d]['blocked']:continue
    sc=_score_day(d,flags,intensity,sport,last_hard)
    if dur>120 and flags[d]['blocked']:sc-=100
    candidates.append((sc,d))
@@ -105,7 +115,7 @@ def generate_week(start,replace=False):
   start_at=datetime.combine(d,time(hour,0)).isoformat(timespec='minutes')
   execute('INSERT INTO sessions(start_at,sport,title,duration_min,priority,intensity,objective,status,source) VALUES(?,?,?,?,?,?,?,?,?)',(start_at,sport,title,dur,'A' if dur>=90 or intensity!='easy' else 'B',intensity,obj,'planned','weekly_generator'))
   used[d]=used.get(d,0)+1;created.append((d,title))
-  if intensity!='easy':last_hard=d
+  if intensity!='easy':last_hard=d;flags[d]['hard']=True
  return {'created':len(created),'phase':phase,'readiness':state,'changes':changes,'message':f'{len(created)} séances générées · adaptation {state["level"]}'}
 
 def generate_until(end_date=date(2027,9,30),replace=False):
