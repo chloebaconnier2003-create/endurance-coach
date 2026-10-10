@@ -21,11 +21,19 @@ def _seed_shifts(c):
                 c.execute("INSERT INTO shifts(start_at,end_at,shift_type,notes) VALUES(?,?,?,?)",
                           (start_at,end_at,kind,'Garde confirmée par athlète · trajets et récupération à prévoir'))
 
+def _seed_training(c):
+    for day in ['2026-11-02','2026-11-03','2026-11-04','2026-11-05','2026-11-06','2026-11-09','2026-11-10']:
+        start_at=day+'T07:00'
+        end_at=day+'T18:00'
+        if not c.execute("SELECT 1 FROM shifts WHERE start_at=? AND shift_type='formation'",(start_at,)).fetchone():
+            c.execute("INSERT INTO shifts(start_at,end_at,shift_type,notes) VALUES(?,?,?,?)",(start_at,end_at,'formation','Formation professionnelle intense : indisponible 07h–18h ; fatigue possible, pas une charge sportive'))
+
 def sync_confirmed_events():
     c=connect()
     try:
         migrate(c)
         _seed_shifts(c)
+        _seed_training(c)
         for name,day,sport in RACES:
             row=c.execute("SELECT id FROM goals WHERE name=?",(name,)).fetchone()
             if row:
