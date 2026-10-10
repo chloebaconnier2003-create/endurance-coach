@@ -1,18 +1,55 @@
-def detailed_workout(sport, intensity, duration, objective=''):
-    sport=(sport or '').lower(); intensity=(intensity or 'easy').lower(); duration=int(duration or 60)
-    if sport=='running':
-        if intensity in {'threshold','quality','hard'}:
-            return {'summary':"15' facile + 3 x 8' soutenu / 3' trot + 10' facile",'warmup':"15 min très facile + mobilité + 3 accélérations progressives de 20 s.",'main':"3 x 8 min à effort contrôlé proche allure semi/seuil bas (RPE 7/10), récupération 3 min en trot très lent.",'cooldown':"10 min facile. Marche 3–5 min si besoin.",'intensity_target':"RPE 7/10 sur les blocs; rester régulier, jamais à bloc.",'nutrition':"Eau selon chaleur. Si >75 min, prévoir 30–45 g glucides/h.",'coach_note':objective or "Développer l'endurance à haute intensité sans créer une fatigue excessive."}
-        if duration>=80:
-            return {'summary':f"{duration} min endurance fondamentale",'warmup':"10–15 min très faciles.",'main':f"Courir en aisance respiratoire. Sur les 20 dernières minutes, accélérer légèrement uniquement si les sensations sont bonnes.",'cooldown':"5–10 min très faciles ou marche.",'intensity_target':"RPE 3–4/10, conversation possible.",'nutrition':"Boire régulièrement; au-delà de 90 min viser 30–60 g glucides/h.",'coach_note':objective or "Construire la tolérance à la durée."}
-        return {'summary':f"{duration} min endurance facile",'warmup':"10 min très faciles.",'main':"Endurance fondamentale relâchée, sans chercher l'allure.",'cooldown':"5 min faciles.",'intensity_target':"RPE 3/10, conversation aisée.",'nutrition':"Hydratation selon conditions.",'coach_note':objective or "Accumuler du volume avec un faible coût de récupération."}
-    if sport=='trail':
-        return {'summary':f"{duration} min trail progressif",'warmup':"15 min faciles sur terrain simple.",'main':"Alterner course et marche active dans les montées. Descendre relâché, priorité à la technique et au contrôle.",'cooldown':"10 min faciles.",'intensity_target':"RPE moyen 4–5/10; montées courtes jusqu'à 7/10.",'nutrition':"Si >90 min: 40–60 g glucides/h + hydratation régulière.",'coach_note':objective or "Développer endurance musculaire, dénivelé et technique."}
+"""Session detail templates: durations and efforts adapt to each generated workout."""
+import re
+
+def detailed_workout(sport,intensity,duration,objective='',title=''):
+    sport=(sport or '').lower(); intensity=(intensity or 'easy').lower()
+    duration=max(15,int(duration or 45)); t=(title or '').lower()
+    hard=intensity not in ('easy','recovery')
+    warm=min(15,max(5,duration//5)); cool=min(10,max(5,duration//8))
+    main_minutes=duration-warm-cool
+    target='RPE 3–4/10, conversation possible' if not hard else 'RPE 5–7/10, jamais à bloc'
+    nutrition='Hydratation selon conditions et soif.'
+    if duration>=90:nutrition='Tester 30–60 g glucides/h en course ou 40–90 g/h à vélo, selon tolérance; hydratation individualisée.'
+    if sport in ('running','trail'):
+        if 'brick' in t:
+            main=f'{main_minutes} min de transition très facile après vélo; aucune recherche de vitesse.'
+            target='RPE 2–3/10'
+        elif 'strides' in t or 'lignes droites' in t:
+            main=f'{max(5,main_minutes-8)} min faciles puis 4–6 × 15–20 s de foulée relâchée, récupération complète.'
+        elif 'côtes' in t:
+            n=min(6,max(2,main_minutes//8))
+            main=f'{n} × 45–60 s en côte à effort maîtrisé, récupération en marchant; compléter en endurance facile.'
+        elif hard and any(k in t for k in ('tempo','marathon','seuil','spécifique')):
+            found=re.search(r'(\d+)\s*[×x]\s*(\d+)',t)
+            n,block=(int(found.group(1)),int(found.group(2))) if found else (3,6)
+            recovery=2 if block<=10 else 3
+            while n>1 and n*block+(n-1)*recovery>main_minutes:n-=1
+            block=min(block,max(3,(main_minutes-(n-1)*recovery)//n))
+            main=f'{n} × {block} min à allure marathon ressentie/tempo contrôlé, {recovery} min trot entre répétitions; temps restant facile.'
+            target='RPE 5–6/10; allure à individualiser par tests, ne pas forcer une vitesse théorique'
+        elif sport=='trail':
+            main=f'{main_minutes} min sur terrain vallonné, marche active en montée, descentes prudentes.'
+        else:
+            main=f'{main_minutes} min en endurance fondamentale, aisance respiratoire; rester facile jusqu’au bout.'
+        return dict(summary=f'{duration} min · '+('séance spécifique' if hard else 'endurance facile'),warmup=f'{warm} min faciles et progressives.',main=main,cooldown=f'{cool} min faciles ou marche.',intensity_target=target,nutrition=nutrition,coach_note=objective or 'Respecter la tolérance mécanique et la récupération.')
     if sport=='cycling':
-        hard=intensity in {'threshold','quality','hard'}
-        return {'summary':f"{duration} min vélo {'spécifique' if hard else 'endurance'}",'warmup':"15 min souples, cadence progressive.",'main':("4 x 8 min soutenues / 4 min faciles, effort RPE 7/10." if hard else "Rouler majoritairement en endurance, cadence confortable. Ajouter 4 x 5 min de vélocité si les jambes sont bonnes."),'cooldown':"10 min très souples.",'intensity_target':("RPE 7/10 sur les blocs." if hard else "RPE 3–4/10."),'nutrition':"À partir de 90 min: 40–70 g glucides/h et 500–750 ml/h selon conditions.",'coach_note':objective or "Développer l'endurance cycliste."}
+        if 'force-endurance' in t or 'montée' in t:
+            n=min(4,max(2,main_minutes//20))
+            main=f'{n} × 6 min en montée ou résistance modérée, RPE 5–6/10, récupération 4 min souples; reste Z2.'
+        elif hard:
+            n=min(4,max(2,main_minutes//18))
+            main=f'{n} × 8 min tempo RPE 5–6/10, récupération 4 min; reste en endurance.'
+        else:
+            main=f'{main_minutes} min en Z2 conversationnelle, cadence confortable; en home-trainer, ventilation et hydratation.'
+        return dict(summary=f'{duration} min vélo',warmup=f'{warm} min très souples.',main=main,cooldown=f'{cool} min souples.',intensity_target=target,nutrition=nutrition,coach_note=objective or 'Endurance cycliste.')
     if sport=='swimming':
-        return {'summary':f"Natation {duration} min technique/endurance",'warmup':"300 m facile, nage variée.",'main':"8 x 50 m technique récup 15–20 s, puis 6 x 200 m régulier récup 20–30 s. Ajuster le nombre de répétitions à la durée disponible.",'cooldown':"200 m très facile.",'intensity_target':"Technique propre, RPE 4–6/10; ne pas dégrader le geste.",'nutrition':"Hydratation simple; glucides utiles surtout si séance longue ou enchaînée.",'coach_note':objective or "Améliorer économie de nage et continuité."}
+        if 'css' in t or hard:
+            main='6 × 100 m réguliers avec 20–30 s de repos; compléter en nage facile selon le temps restant.'
+        elif 'technique' in t:
+            main='6–8 × 50 m éducatifs avec 20 s de repos, puis 4 × 100 m souples; réduire les répétitions si nécessaire.'
+        else:
+            main='4 × 200 m en aisance avec 20–30 s de repos, puis 4 × 50 m techniques; adapter le nombre de répétitions.'
+        return dict(summary=f'{duration} min natation',warmup='200 m très faciles.',main=main,cooldown='100 m souples.',intensity_target='RPE 3–5/10; priorité à la technique.',nutrition='Boire selon besoin.',coach_note=objective or 'Endurance et économie de nage.')
     if sport=='strength':
-        return {'summary':f"Renforcement {duration} min",'warmup':"8–10 min mobilité + activation tronc/hanches/épaules.",'main':"Tractions, pompes/dips, squat ou fente, charnière de hanche, mollets, gainage. 3–4 séries; garder 2 répétitions en réserve.",'cooldown':"Mobilité légère 5 min.",'intensity_target':"RPE 6–7/10, technique stricte, pas d'échec musculaire.",'nutrition':"Repas normal riche en protéines après la séance.",'coach_note':objective or "Robustesse générale et prévention."}
-    return {'summary':f"Séance {duration} min",'warmup':"Échauffement progressif.",'main':objective or "Travail principal selon sensations.",'cooldown':"Retour au calme.",'intensity_target':"Effort contrôlé.",'nutrition':"Hydratation selon besoin.",'coach_note':objective or "Développement général."}
+        return dict(summary=f'{duration} min renforcement',warmup='8 min mobilité et activation hanches/tronc.',main='2–3 séries de squat ou fente tolérés, charnière de hanche, mollets, tirage, poussée et gainage; 6–12 répétitions, 2–3 répétitions en réserve.',cooldown='5 min retour au calme.',intensity_target='RPE 5–7/10; aucun exercice douloureux, aucune série à échec.',nutrition='Apports énergétiques et protéiques suffisants.',coach_note=objective or 'Robustesse musculaire.')
+    return dict(summary=f'{duration} min',warmup=f'{warm} min progressives.',main=f'{main_minutes} min contrôlées.',cooldown=f'{cool} min faciles.',intensity_target=target,nutrition=nutrition,coach_note=objective or 'Entraînement général.')
