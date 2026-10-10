@@ -123,10 +123,11 @@ def generate_week(start,replace=False,preview=False):
   # default training slot; later UI can allow drag/drop. Two-a-days separated.
   hour=10 if used.get(d,0)==0 else 17
   start_at=datetime.combine(d,time(hour,0)).isoformat(timespec='minutes')
-  execute('INSERT INTO sessions(start_at,sport,title,duration_min,priority,intensity,objective,status,source) VALUES(?,?,?,?,?,?,?,?,?)',(start_at,sport,title,dur,'A' if dur>=90 or intensity!='easy' else 'B',intensity,obj,'planned','weekly_generator'))
+  if not preview:execute('INSERT INTO sessions(start_at,sport,title,duration_min,priority,intensity,objective,status,source) VALUES(?,?,?,?,?,?,?,?,?)',(start_at,sport,title,dur,'A' if dur>=90 or intensity!='easy' else 'B',intensity,obj,'planned','weekly_generator'))
+  scheduled.append(dict(start_at=start_at,sport=sport,title=title,duration_min=dur,intensity=intensity,objective=obj,status='preview' if preview else 'planned'))
   used[d]=used.get(d,0)+1;created.append((d,title))
   if intensity!='easy':last_hard=d;flags[d]['hard']=True
- return {'created':len(created),'phase':phase,'readiness':state,'changes':changes,'message':f'{len(created)} séances générées · adaptation {state["level"]}'}
+ return {'created':len(created),'sessions':scheduled,'phase':phase,'readiness':state,'changes':changes,'message':f'{len(created)} séances générées · adaptation {state["level"]}'}
 
 def generate_until(end_date=date(2027,9,12),replace=False):
  d=date.today()-timedelta(days=date.today().weekday());total=0;weeks=0
