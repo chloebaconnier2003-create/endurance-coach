@@ -37,7 +37,7 @@ def _day_flags(start,end):
  for a,b,k in fixed:
   d=a.date()
   if d not in flags:continue
-  if k in ('24h','12h_jour','12h_nuit'):flags[d]['blocked']=True
+  if k in ('24h','12h_jour','12h_nuit','formation'):flags[d]['blocked']=True
   if k=='24h':flags[d]['shift24']=True
   if k=='12h_nuit':flags[d]['night']=True
   if k in ('rugby','rugby_training','rugby_match'):
