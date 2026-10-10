@@ -1,6 +1,7 @@
 from datetime import date,datetime,timedelta,time
 from db import query,execute
 from calendar_engine import recurring_instances,all_shifts
+from adaptive_layer import adapt_prescription
 
 # Conservative evidence-informed scheduler: low intensity dominates; hard/easy spacing;
 # running exposure progresses by phase and availability, while rugby counts as hard load.
@@ -85,9 +86,9 @@ def _score_day(d,flags,intensity,sport,last_hard):
 
 def generate_week(start,replace=False):
  start=start-timedelta(days=start.weekday());end=start+timedelta(days=6);phase,_=phase_for(start);w=_week_index(start,phase);flags=_day_flags(start,end)
- if replace:execute("DELETE FROM sessions WHERE date(start_at)>=? AND date(start_at)<=? AND source='weekly_generator'",(start.isoformat(),end.isoformat()))
+ if replace:execute("DELETE FROM sessions WHERE date(start_at)>=? AND date(start_at)<=? AND source='weekly_generator' AND status='planned'",(start.isoformat(),end.isoformat()))
  elif query("SELECT id FROM sessions WHERE date(start_at)>=? AND date(start_at)<=? AND source='weekly_generator' LIMIT 1",(start.isoformat(),end.isoformat())):return {'created':0,'phase':phase,'message':'Semaine déjà générée'}
- plan=prescription(phase,w);created=[];last_hard=None;used={}
+ plan,state,changes=adapt_prescription(prescription(phase,w),start);created=[];last_hard=None;used={}
  for sport,title,dur,intensity,obj in sorted(plan,key=lambda x:(x[3]=='easy',-x[2])):
   candidates=[]
   for i in range(7):
@@ -105,7 +106,7 @@ def generate_week(start,replace=False):
   execute('INSERT INTO sessions(start_at,sport,title,duration_min,priority,intensity,objective,status,source) VALUES(?,?,?,?,?,?,?,?,?)',(start_at,sport,title,dur,'A' if dur>=90 or intensity!='easy' else 'B',intensity,obj,'planned','weekly_generator'))
   used[d]=used.get(d,0)+1;created.append((d,title))
   if intensity!='easy':last_hard=d
- return {'created':len(created),'phase':phase,'message':f'{len(created)} séances générées'}
+ return {'created':len(created),'phase':phase,'readiness':state,'changes':changes,'message':f'{len(created)} séances générées · adaptation {state["level"]}'}
 
 def generate_until(end_date=date(2027,9,30),replace=False):
  d=date.today()-timedelta(days=date.today().weekday());total=0;weeks=0
