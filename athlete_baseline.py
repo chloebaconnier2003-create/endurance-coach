@@ -6,6 +6,8 @@ BASELINE = {
     "weekly_tolerated_hours_min": 6,
     "weekly_tolerated_hours_max": 9,
     "availability": "variable",
+    "current_running_hours_per_week_min": 2,
+    "current_running_hours_per_week_max": 3,
     "occasional_discomfort": ["hip", "shins"],
     "goal_strategy": "Optimize marathon and intermediate races while building toward LeMan Full Distance",
     "equipment": ["gps_hr_watch", "hr_chest_strap", "indoor_trainer", "pool", "garmin_strava_data"],
